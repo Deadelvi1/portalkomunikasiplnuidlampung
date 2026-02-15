@@ -18,6 +18,38 @@ import os
 import hashlib
 import sqlite3
 import calendar
+from functools import lru_cache
+
+# ============ CACHING & SESSION MANAGEMENT ============
+class ScrapingCache:
+    """Simple cache untuk hasil scraping dengan TTL"""
+    def __init__(self, ttl_minutes=60):
+        self.cache = {}
+        self.ttl = timedelta(minutes=ttl_minutes)
+    
+    def get(self, key):
+        """Get cached value jika belum expired"""
+        if key in self.cache:
+            value, timestamp = self.cache[key]
+            if datetime.now() - timestamp < self.ttl:
+                return value
+            else:
+                del self.cache[key]
+        return None
+    
+    def set(self, key, value):
+        """Set cache value dengan timestamp"""
+        self.cache[key] = (value, datetime.now())
+    
+    def clear_expired(self):
+        """Remove expired entries"""
+        now = datetime.now()
+        expired_keys = [k for k, (_, ts) in self.cache.items() if now - ts >= self.ttl]
+        for k in expired_keys:
+            del self.cache[k]
+
+# Global cache instance (1 hour TTL)
+scraping_cache = ScrapingCache(ttl_minutes=60)
 
 # CONFIGURATION 
 DB_PATH = os.path.abspath("PLN_Ultimate_Monitoring_V7.db")
@@ -209,17 +241,13 @@ def show_login_page():
             }
         </style>
     """, unsafe_allow_html=True)
-
-    # 2. Layouting - Membungkus Header & Form dalam kolom yang sama
-    # Menggunakan rasio [1, 2, 1] tapi kita isi di kolom tengah saja agar header ikut mengecil
     _, center_col, _ = st.columns([0.8, 2, 0.8])
-
     with center_col:
-        # Header sekarang ada di dalam kolom tengah, jadi lebarnya akan sama dengan form
+        # Header  lebarnya kan sama dengan form
         st.markdown("""
             <div class="login-header">
-                <h1>⚡ PLN UID LAMPUNG</h1>
-                <p>Platform Manajemen Sosmed & Dokumentasi</p>
+                <h1>⚡ PORTAL KOMUNIKASI PLN UID LAMPUNG</h1>
+                <p>Platform Manajemen Sosmed & Pengadaan Dokumentasi</p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -402,6 +430,7 @@ def init_db():
                 'nama_kegiatan': "nama_kegiatan TEXT",
                 'unit': "unit TEXT",
                 'status': "status TEXT",
+                'doc_link': "doc_link TEXT",
                 'created_at': "created_at TEXT"
             })
     except Exception as e:
@@ -697,35 +726,79 @@ def extract_username(input_str):
     # Jika berupa shortcode (beberapa input hanya shortcode), biarkan apa adanya
     return s.replace('@', '').strip()
 
+def render_documentation_links(drive_link, video_link, flyer_link):
+    """Render HTML untuk ketiga documentation links"""
+    if not any([
+        drive_link and pd.notna(drive_link) and str(drive_link).strip(),
+        video_link and pd.notna(video_link) and str(video_link).strip(),
+        flyer_link and pd.notna(flyer_link) and str(flyer_link).strip()
+    ]):
+        return "<div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(30, 58, 138, 0.1);'><div style='color: #94a3b8; font-size: 0.9rem; font-style: italic;'>📄 Dokumentasi belum tersedia</div></div>"
+    
+    html = "<div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(30, 58, 138, 0.1);'><div style='display: flex; gap: 10px; flex-wrap: wrap;'>"
+    
+    if drive_link and pd.notna(drive_link) and str(drive_link).strip():
+        html += f"<a href='{drive_link}' target='_blank' style='display: inline-block; background: #0ea5e9; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.9rem;'>📁 Drive</a>"
+    
+    if video_link and pd.notna(video_link) and str(video_link).strip():
+        html += f"<a href='{video_link}' target='_blank' style='display: inline-block; background: #f59e0b; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.9rem;'>🎬 Video</a>"
+    
+    if flyer_link and pd.notna(flyer_link) and str(flyer_link).strip():
+        html += f"<a href='{flyer_link}' target='_blank' style='display: inline-block; background: #8b5cf6; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.9rem;'>📸 Flyer</a>"
+    
+    html += "</div></div>"
+    return html
+
 # ============ INSTAGRAM RATE LIMIT MANAGER ============
 class InstagramRateLimitManager:
     """Manage Instagram rate limit safely with exponential backoff"""
     def __init__(self):
         self.last_request_time = {}
         self.rate_limit_wait_until = {}
-        self.min_delay_between_requests = 2  # seconds
+        self.min_delay_between_requests = 3  # increased from 2 to 3 seconds
+        self.user_agent_list = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15'
+        ]
+        self.ua_index = 0
+        self.request_count = 0
+    
+    def get_next_user_agent(self):
+        """Rotate user agents"""
+        ua = self.user_agent_list[self.ua_index]
+        self.ua_index = (self.ua_index + 1) % len(self.user_agent_list)
+        return ua
     
     def wait_if_needed(self, username):
-        """Check and wait if rate limit detected"""
+        """Check and wait if rate limit detected with jitter"""
         if username in self.rate_limit_wait_until:
             wait_until = self.rate_limit_wait_until[username]
             if datetime.now() < wait_until:
                 remaining = (wait_until - datetime.now()).total_seconds()
-                st.warning(f"⏳ Rate limit active for @{username}. Wait {int(remaining)} more seconds...")
-                time.sleep(min(remaining, 60))  # Max wait 1 minute per check
+                st.warning(f"⏳ Rate limit active untuk @{username}. Tunggu {int(remaining)} detik lagi...")
+                time.sleep(min(remaining, 60))
         
-        # Enforce minimum delay between requests
+        # Enforce minimum delay between requests dengan jitter
         if username in self.last_request_time:
             elapsed = (datetime.now() - self.last_request_time[username]).total_seconds()
             if elapsed < self.min_delay_between_requests:
-                time.sleep(self.min_delay_between_requests - elapsed)
+                jitter = np.random.uniform(0.5, 1.5)  # Random jitter 0.5-1.5 seconds
+                sleep_time = max(0, self.min_delay_between_requests - elapsed + jitter)
+                time.sleep(sleep_time)
         
         self.last_request_time[username] = datetime.now()
+        self.request_count += 1
     
     def mark_rate_limited(self, username, retry_after_seconds=900):
         """Mark account as rate limited (default 15 min)"""
         self.rate_limit_wait_until[username] = datetime.now() + timedelta(seconds=retry_after_seconds)
-        st.warning(f"⚠️ Instagram rate limit detected for @{username}. Please wait 15-30 minutes before retrying.")
+    
+    def should_slow_down(self):
+        """Return True if should add extra delay (every 10 requests)"""
+        return self.request_count % 10 == 0 and self.request_count > 0
 
 # Global rate limit manager
 rate_limit_manager = InstagramRateLimitManager()
@@ -736,11 +809,18 @@ def run_scraper(username, unit_name, limit=20, target_month="Semua", kategori_in
     """Scrape Instagram posts with retry logic and rate limit handling"""
     clean_username = extract_username(username)
     
+    # Check cache first
+    cache_key = f"{clean_username}_{unit_name}_{limit}_{target_month}"
+    cached_result = scraping_cache.get(cache_key)
+    if cached_result is not None:
+        st.info(f"✅ Menggunakan cache untuk @{clean_username} (TTL: 1 jam)")
+        return cached_result
+    
     # Check rate limit before attempting
     rate_limit_manager.wait_if_needed(clean_username)
     
     L = instaloader.Instaloader()
-    L.context.user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    L.context.user_agent = rate_limit_manager.get_next_user_agent()
     
     results = []
     month_map = {i+1: m for i, m in enumerate(get_month_order())}
@@ -765,10 +845,12 @@ def run_scraper(username, unit_name, limit=20, target_month="Semua", kategori_in
             st.error(f"❌ Gagal mengambil posting dari link {clean_username}: {e}")
             return pd.DataFrame()
 
-    # Normal profile scraping with retry
+    # Normal profile scraping with retry and improved safety
     profile = None
     for attempt in range(max_retries + 1):
         try:
+            # Rotate user agent setiap retry
+            L.context.user_agent = rate_limit_manager.get_next_user_agent()
             profile = instaloader.Profile.from_username(L.context, clean_username)
             break
         except Exception as e:
@@ -778,10 +860,10 @@ def run_scraper(username, unit_name, limit=20, target_month="Semua", kategori_in
                 st.error(f"❌ Username '@{clean_username}' tidak ditemukan")
                 return pd.DataFrame()
             # Rate limit error
-            elif "401 Unauthorized" in error_msg or "Please wait a few minutes" in error_msg:
+            elif "401 Unauthorized" in error_msg or "Please wait a few minutes" in error_msg or "429" in error_msg:
                 rate_limit_manager.mark_rate_limited(clean_username)
                 if attempt < max_retries:
-                    wait_time = 5 * (2 ** attempt)  # Exponential backoff: 5s, 10s
+                    wait_time = 10 * (2 ** attempt)  # Exponential backoff: 10s, 20s - lebih panjang untuk safety
                     st.warning(f"⏳ Instagram membatasi akses (Rate Limit). Menunggu {wait_time} detik sebelum retry... (Attempt {attempt+1}/{max_retries})")
                     time.sleep(wait_time)
                 else:
@@ -828,8 +910,15 @@ def run_scraper(username, unit_name, limit=20, target_month="Semua", kategori_in
                 "source": "Scraping"
             })
             count += 1
-            # Longer delay to avoid rate limiting
-            time.sleep(2)
+            
+            # Adaptive delay: lebih lama setiap beberapa post untuk safety
+            base_delay = 2  # base delay 2 second
+            if count % 5 == 0:
+                # Extra delay every 5 posts
+                extra_delay = np.random.uniform(1, 3)
+                time.sleep(base_delay + extra_delay)
+            else:
+                time.sleep(base_delay)
         except Exception as inner_e:
             # Check if it's a rate limit error
             error_msg = str(inner_e)
@@ -841,20 +930,34 @@ def run_scraper(username, unit_name, limit=20, target_month="Semua", kategori_in
                 # Skip problematic post but continue
                 st.debug(f"Skip post @{clean_username}: {inner_e}")
 
-    return pd.DataFrame(results)
+    result_df = pd.DataFrame(results)
+    # Cache the result
+    scraping_cache.set(cache_key, result_df)
+    return result_df
 
 def scrape_post_by_link(post_url, unit_name='Manual Input', kategori='Korporat', max_retries=2):
-    """Scrape single Instagram post by URL with retry logic"""
+    """Scrape single Instagram post by URL with retry logic and improved safety"""
+    # Check cache first
+    cache_key = f"post_{post_url[:50]}"
+    cached_result = scraping_cache.get(cache_key)
+    if cached_result is not None:
+        st.info(f"✅ Menggunakan cache untuk link (TTL: 1 jam)")
+        return cached_result
+    
     for attempt in range(max_retries + 1):
         try:
+            # Apply rate limiting sebelum scrape
+            rate_limit_manager.wait_if_needed(f"post_{post_url[:20]}")
+            
             s = str(post_url).strip()
             # If input is a shortcode only, accept it
             if '/' not in s or len(s) <= 20 and not s.startswith('http'):
                 shortcode = s
             else:
                 shortcode = s.split('/p/')[-1].rstrip('/')
+            
             L = instaloader.Instaloader()
-            L.context.user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            L.context.user_agent = rate_limit_manager.get_next_user_agent()
             post = instaloader.Post.from_shortcode(L.context, shortcode)
             
             is_vid = post.is_video
@@ -877,13 +980,15 @@ def scrape_post_by_link(post_url, unit_name='Manual Input', kategori='Korporat',
                 "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "source": "Link Sync"
             }
+            # Cache result
+            scraping_cache.set(cache_key, result)
             return result
         except Exception as e:
             error_msg = str(e)
             # Rate limit error
-            if "401 Unauthorized" in error_msg or "Please wait" in error_msg:
+            if "401 Unauthorized" in error_msg or "Please wait" in error_msg or "429" in error_msg:
                 if attempt < max_retries:
-                    wait_time = 5 * (2 ** attempt)
+                    wait_time = 10 * (2 ** attempt)
                     st.warning(f"⏳ Rate limit saat scrape post. Retry dalam {wait_time} detik... (Attempt {attempt+1}/{max_retries})")
                     time.sleep(wait_time)
                 else:
@@ -1980,19 +2085,34 @@ if user_role == "admin":
         """, unsafe_allow_html=True)
 
         # Combine kalender table and pengajuan_dokumentasi to ensure all pengajuan appear on calendar
-        # Prioritas: gunakan data dari pengajuan_dokumentasi sebagai sumber utama
+        # Ambil ketiga links: hasil_link_drive, hasil_video, hasil_flyer
         df_peng = pd.read_sql(text("""
             SELECT id as pengajuan_id, tanggal_acara as tanggal, nama_pengaju as nama_kegiatan, 
-                   unit, status, created_at, jam_mulai, jam_selesai, nomor_telpon
+                   unit, status, created_at, jam_mulai, jam_selesai, nomor_telpon, 
+                   hasil_link_drive, hasil_video, hasil_flyer
             FROM pengajuan_dokumentasi 
             ORDER BY tanggal_acara ASC
         """), engine)
 
         # Gunakan pengajuan_dokumentasi sebagai sumber utama
         if df_peng.empty:
-            combined_events = pd.DataFrame(columns=['pengajuan_id', 'tanggal', 'nama_kegiatan', 'unit', 'status', 'created_at', 'jam_mulai', 'jam_selesai', 'nomor_telpon'])
+            combined_events = pd.DataFrame(columns=['pengajuan_id', 'tanggal', 'nama_kegiatan', 'unit', 'status', 'created_at', 'jam_mulai', 'jam_selesai', 'nomor_telpon', 'hasil_link_drive', 'hasil_video', 'hasil_flyer'])
         else:
             combined_events = df_peng.copy()
+        
+        # Tambahan: jika ada doc_link dari dokumentasi_calendar table, gunakan sebagai override
+        try:
+            df_cal = pd.read_sql(text("""
+                SELECT pengajuan_id, doc_link FROM dokumentasi_calendar 
+                WHERE doc_link IS NOT NULL AND doc_link != ''
+            """), engine)
+            if not df_cal.empty:
+                for _, cal_row in df_cal.iterrows():
+                    mask = combined_events['pengajuan_id'] == cal_row['pengajuan_id']
+                    if mask.any():
+                        combined_events.loc[mask, 'doc_link'] = cal_row['doc_link']
+        except:
+            pass
 
         # Filter Periode - Bulan & tahun untuk tampilan kalender
         with st.container(border=True):
@@ -2117,46 +2237,75 @@ if user_role == "admin":
                                 st.warning("Tidak ada jadwal untuk periode ini.")
                             else:
                                 for _, cal_row in df_cal_filtered.iterrows():
-                                    with st.container():
-                                        cc1, cc2, cc3 = st.columns([2.5, 1.2, 0.8])
-                                        
-                                        with cc1:
-                                            # Data sudah lengkap dari combined_events, tidak perlu query lagi
-                                            jam_mulai = cal_row.get('jam_mulai') or "-"
-                                            jam_selesai = cal_row.get('jam_selesai') or "-"
-                                            nomor_telpon = cal_row.get('nomor_telpon') or "-"
-                                            
-                                            status_color = {"approved": "#10b981", "done": "#3b82f6", "pending": "#f59e0b"}.get(str(cal_row['status']).lower(), "#64748b")
-                                            st.markdown(f"""
-                                                <div style='padding: 12px; background:#f8fafc; border-radius:8px; border-left:4px solid {status_color};'>
-                                                    <div style='font-weight: 700; color: #1e293b; font-size: 14px;'>{cal_row['nama_kegiatan']}</div>
-                                                    <div style='font-size: 11px; color: #64748b; margin-top:6px;'>
-                                                        <div>📅 <b>{cal_row['tanggal']}</b> | 🏢 <b>{cal_row['unit']}</b></div>
-                                                        <div style='margin-top:4px;'>🕐 <b>{jam_mulai}</b> - <b>{jam_selesai}</b></div>
-                                                        <div style='margin-top:4px;'>📱 <b>{nomor_telpon}</b></div>
+                                    # Ambil ketiga links dari row
+                                    drive_link = cal_row.get('hasil_link_drive')
+                                    video_link = cal_row.get('hasil_video')
+                                    flyer_link = cal_row.get('hasil_flyer')
+                                    
+                                    jam_mulai = cal_row.get('jam_mulai') or "-"
+                                    jam_selesai = cal_row.get('jam_selesai') or "-"
+                                    
+                                    st_val = str(cal_row['status']).lower()
+                                    colors = {
+                                        'approved': ('#10b981', '#f0fdf4'),
+                                        'pending': ('#f59e0b', '#fff7ed'),
+                                        'done': ('#6366f1', '#eef2ff'),
+                                        '': ('#10b981', '#f0fdf4')
+                                    }
+                                    accent, bg = colors.get(st_val, ('#64748b', '#f8fafc'))
+                                    
+                                    # Render documentation links
+                                    doc_link_section = render_documentation_links(drive_link, video_link, flyer_link)
+                                    
+                                    st.markdown(f"""
+                                        <div style='background: white; padding: 20px; border-radius: 16px; border-left: 8px solid {accent}; margin-bottom: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: flex-start;'>
+                                            <div style='flex: 3;'>
+                                                <div style='display: flex; align-items: center; gap: 15px; margin-bottom: 8px;'>
+                                                    <div style='background: #1e3a8a; color: white; padding: 4px 12px; border-radius: 8px; font-weight: 700; font-size: 0.85rem;'>
+                                                        {cal_row['date_obj'].strftime('%d %b %Y')}
                                                     </div>
-                                                    <div style='font-size: 10px; color: {status_color}; font-weight:700; margin-top:6px;'>Status: {str(cal_row['status']).upper()}</div>
+                                                    <div style='color: #64748b; font-weight: 600; font-size: 0.9rem;'>
+                                                        🕒 {jam_mulai} - {jam_selesai}
+                                                    </div>
                                                 </div>
-                                            """, unsafe_allow_html=True)
-                                        
-                                        with cc2:
-                                            pass  # spacer
-                                        
-                                        with cc3:
-                                            # Tombol Hapus - langsung hapus dari pengajuan_dokumentasi
-                                            if cc3.button("🗑️", key=f"del_cal_{cal_row['pengajuan_id']}", use_container_width=True):
+                                                <div style='font-size: 1.2rem; font-weight: 800; color: #0f172a;'>{cal_row['nama_kegiatan']}</div>
+                                                <div style='margin-top: 4px; color: #475569; font-size: 0.9rem;'>📍 Unit: <span style='font-weight: 600; color: #1e3a8a;'>{cal_row.get('unit','')}</span></div>
+                                                {doc_link_section}
+                                            </div>
+                                            <div style='flex: 1; text-align: right;'>
+                                                <span style='background: {bg}; color: {accent}; padding: 8px 16px; border-radius: 12px; font-size: 0.75rem; font-weight: 800; border: 1.5px solid {accent}40; text-transform: uppercase;'>
+                                                    {cal_row.get('status') or 'APPROVED'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                    
+                                    # Delete button untuk agenda dengan styling bagus
+                                    col1, col2 = st.columns([1, 3])
+                                    with col1:
+                                        if st.button("🗑️ Hapus Kegiatan", key=f"del_admin_agenda_{cal_row['pengajuan_id']}", 
+                                                   help="Hapus agenda ini dari kalender", type="secondary"):
+                                            st.session_state[f"confirm_delete_{cal_row['pengajuan_id']}"] = True
+                                    
+                                    # Confirmation dialog
+                                    if st.session_state.get(f"confirm_delete_{cal_row['pengajuan_id']}", False):
+                                        st.warning(f"⚠️ Yakin ingin menghapus kegiatan '{cal_row['nama_kegiatan']}'?")
+                                        col_confirm, col_cancel = st.columns(2)
+                                        with col_confirm:
+                                            if st.button("✅ Ya, Hapus", key=f"confirm_{cal_row['pengajuan_id']}"):
                                                 with engine.begin() as conn:
                                                     pengajuan_id = cal_row.get('pengajuan_id')
                                                     if pengajuan_id and pd.notna(pengajuan_id):
-                                                        # Hapus dari pengajuan_dokumentasi
                                                         conn.execute(text("DELETE FROM pengajuan_dokumentasi WHERE id=:pid"), {"pid": int(pengajuan_id)})
-                                                        # Hapus dari kalender juga jika ada
                                                         conn.execute(text("DELETE FROM dokumentasi_calendar WHERE pengajuan_id=:pid"), {"pid": int(pengajuan_id)})
-                                                
-                                                st.toast(f"Agenda '{cal_row['nama_kegiatan']}' berhasil dihapus")
+                                                st.toast(f"✅ Agenda '{cal_row['nama_kegiatan']}' berhasil dihapus", icon="✅")
+                                                st.session_state[f"confirm_delete_{cal_row['pengajuan_id']}"] = False
                                                 time.sleep(0.5)
                                                 st.rerun()
-                                            st.markdown("<hr style='margin: 8px 0; opacity: 0.1;'>", unsafe_allow_html=True)
+                                        with col_cancel:
+                                            if st.button("❌ Batal", key=f"cancel_{cal_row['pengajuan_id']}"):
+                                                st.session_state[f"confirm_delete_{cal_row['pengajuan_id']}"] = False
+                                                st.rerun()
  
     # ---------------------------------------------------------
     # PAGE 6: PENGATURAN UNIT
@@ -2596,9 +2745,10 @@ else:  # role: user
                 s_year = st.number_input("Tahun Visual", value=datetime.now().year)
 
         try:
-            # Ambil data dasar
+            # Ambil data dasar dengan ketiga links dari pengajuan
             query = """
-                SELECT c.*, p.jam_mulai, p.jam_selesai, p.user_id, COALESCE(p.status, '') as p_status
+                SELECT c.*, p.jam_mulai, p.jam_selesai, p.user_id, COALESCE(p.status, '') as p_status,
+                       p.hasil_link_drive, p.hasil_video, p.hasil_flyer
                 FROM dokumentasi_calendar c
                 LEFT JOIN pengajuan_dokumentasi p ON c.pengajuan_id = p.id
             """
@@ -2690,9 +2840,17 @@ else:  # role: user
                             '': ('#10b981', '#f0fdf4')
                         }
                         accent, bg = colors.get(st_val, ('#64748b', '#f8fafc'))
+                        
+                        # Ambil ketiga links dari row
+                        drive_link = row.get('hasil_link_drive')
+                        video_link = row.get('hasil_video')
+                        flyer_link = row.get('hasil_flyer')
+                        
+                        # Render documentation links
+                        doc_link_section = render_documentation_links(drive_link, video_link, flyer_link)
 
                         st.markdown(f"""
-                            <div style='background: white; padding: 20px; border-radius: 16px; border-left: 8px solid {accent}; margin-bottom: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center;'>
+                            <div style='background: white; padding: 20px; border-radius: 16px; border-left: 8px solid {accent}; margin-bottom: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: flex-start;'>
                                 <div style='flex: 3;'>
                                     <div style='display: flex; align-items: center; gap: 15px; margin-bottom: 8px;'>
                                         <div style='background: #1e3a8a; color: white; padding: 4px 12px; border-radius: 8px; font-weight: 700; font-size: 0.85rem;'>
@@ -2704,6 +2862,7 @@ else:  # role: user
                                     </div>
                                     <div style='font-size: 1.2rem; font-weight: 800; color: #0f172a;'>{row['nama_kegiatan']}</div>
                                     <div style='margin-top: 4px; color: #475569; font-size: 0.9rem;'>📍 Unit: <span style='font-weight: 600; color: #1e3a8a;'>{row.get('unit','')}</span></div>
+                                    {doc_link_section}
                                 </div>
                                 <div style='flex: 1; text-align: right;'>
                                     <span style='background: {bg}; color: {accent}; padding: 8px 16px; border-radius: 12px; font-size: 0.75rem; font-weight: 800; border: 1.5px solid {accent}40; text-transform: uppercase;'>

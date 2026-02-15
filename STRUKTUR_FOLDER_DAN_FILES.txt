@@ -1,0 +1,1322 @@
+================================================================================
+    PENJELASAN LENGKAP STRUKTUR FOLDER & FILE
+    PLN UID Lampung Humas - Dokumentasi Files & Directories
+    Versi: 1.0 | Last Updated: 31 Januari 2026
+================================================================================
+
+📂 WORKSPACE ROOT STRUCTURE
+================================================================================
+
+humasplnuidlampung/
+├── .git/                                    [Version Control Repository]
+├── .venv/                                   [Virtual Environment - Python]
+├── __pycache__/                             [Python Bytecode Cache]
+├── scripts/                                 [Helper Scripts Directory]
+│   ├── check_users.py
+│   ├── hash_check.py
+│   ├── set_admin_pass.py
+│   ├── test_login_admin.py
+│   └── update_and_test_dea.py
+├── dokum.txt                                [Old Documentation Backup]
+├── main.py                                  [Main Application (Streamlit)]
+├── requirements.txt                         [Python Dependencies]
+├── smoke_test.py                            [Database Testing & Validation]
+├── smoke_output.txt                         [Test Output Log]
+├── tools_inspect_db.py                      [Database Inspection Tool]
+├── PLN_Ultimate_Monitoring_V7.db            [Main SQLite Database]
+├── PLN_Ultimate_Monitoring_V7.db-shm        [WAL Shadow File]
+├── PLN_Ultimate_Monitoring_V7.db-wal        [WAL Log File]
+├── DOKUMENTASI_LENGKAP.txt                  [Complete System Documentation]
+└── STRUKTUR_FOLDER_DAN_FILES.txt            [This File]
+
+
+================================================================================
+🗂️ DETAILED FOLDER & FILE EXPLANATIONS
+================================================================================
+
+═══════════════════════════════════════════════════════════════════════════════
+1. .git/ DIRECTORY (Hidden Folder)
+═══════════════════════════════════════════════════════════════════════════════
+
+PURPOSE:
+├─ Version Control System (Git repository)
+├─ Tracks all code changes & history
+└─ Enable collaboration & rollback capability
+
+CONTENTS:
+├── config              [Local git configuration]
+├── objects/            [Compressed objects (commits, trees, blobs)]
+├── refs/               [References to branches & tags]
+├── HEAD               [Current branch pointer]
+├── logs/              [Reflog (history of HEAD movements)]
+├── hooks/             [Git hooks for automation]
+└── index              [Staging area]
+
+HOW IT WORKS:
+1. When you run: git add .
+   └─ Files staged dalam index (ready to commit)
+
+2. When you run: git commit -m "message"
+   └─ Files simpan dalam objects/ dengan unique hash
+
+3. When you run: git push -u origin main
+   └─ Local commits di-upload ke remote (GitHub/GitLab)
+
+COMMON OPERATIONS:
+─────────────────
+
+Check status:
+$ git status
+→ Shows: modified files, staged files, untracked files
+
+View history:
+$ git log
+→ Shows: all commits dengan timestamp, author, message
+
+View changes:
+$ git diff
+→ Shows: line-by-line changes sejak last commit
+
+Revert changes:
+$ git reset --hard HEAD
+→ Discard all changes, kembali ke last commit
+
+Clone repository (untuk orang baru):
+$ git clone <repo-url>
+→ Download seluruh .git & working files
+
+
+═══════════════════════════════════════════════════════════════════════════════
+2. .venv/ DIRECTORY (Virtual Environment)
+═══════════════════════════════════════════════════════════════════════════════
+
+PURPOSE:
+├─ Isolated Python environment untuk project ini
+├─ Prevent package conflict dengan global Python
+├─ Lock specific package versions
+└─ Easy setup untuk developer lain
+
+CONTENTS:
+├── bin/                [Executable scripts (Linux/Mac)]
+│   ├── python         [Python interpreter]
+│   ├── pip            [Package manager]
+│   ├── activate       [Activation script]
+│   └── ... (other CLI tools)
+├── Lib/                [Python packages & dependencies]
+│   └── site-packages/  [Installed packages]
+├── include/            [C header files for extensions]
+└── pyvenv.cfg         [Configuration file]
+
+HOW IT WORKS:
+─────────────
+
+1. CREATE Virtual Environment:
+   $ python -m venv .venv
+   
+   This creates:
+   ├─ Isolated Python interpreter copy
+   └─ Empty site-packages directory
+
+2. ACTIVATE Virtual Environment:
+   
+   Windows (PowerShell):
+   $ .\.venv\Scripts\Activate.ps1
+   
+   Windows (CMD):
+   $ .venv\Scripts\activate.bat
+   
+   Linux/Mac:
+   $ source .venv/bin/activate
+   
+   Signs (prompt changes):
+   (.venv) $ ← venv name prepended to terminal prompt
+
+3. INSTALL Packages:
+   $ pip install -r requirements.txt
+   
+   All packages installed dalam .venv/Lib/site-packages/
+   NOT dalam global Python site-packages
+
+4. DEACTIVATE Virtual Environment:
+   $ deactivate
+   
+   Back to global Python environment
+
+WHY USE VIRTUAL ENVIRONMENT?
+────────────────────────────
+
+Scenario WITHOUT venv:
+├─ Project A memerlukan: pandas==1.0.0, numpy==1.18.0
+├─ Project B memerlukan: pandas==2.0.0, numpy==1.24.0
+├─ pip install semuanya → CONFLICT!
+└─ Program bisa crash atau behave unexpectedly
+
+Scenario WITH venv:
+├─ Project A punya .venv dengan pandas==1.0.0
+├─ Project B punya .venv dengan pandas==2.0.0
+├─ Each project dapat package version yang cocok
+└─ No conflict! 🎉
+
+IMPORTANT: .venv/ TIDAK DISIMPAN DI GIT
+─────────────────────────────────────────
+
+Lihat .gitignore file:
+```
+.venv/
+venv/
+env/
+```
+
+Alasan:
+├─ Size: .venv/ bisa 50-200 MB (terlalu besar)
+├─ Platform: .venv tidak portable across OS
+└─ Unnecessary: pip install -r requirements.txt sudah cukup
+
+Developer baru setup:
+─────────────────────
+$ git clone <repo>
+$ cd project
+$ python -m venv .venv
+$ .venv\Scripts\activate        [Windows]
+$ source .venv/bin/activate     [Linux/Mac]
+$ pip install -r requirements.txt
+→ Selesai! Environment siap pakai
+
+CHECKING VENV STATUS:
+─────────────────────
+
+Which Python is running?
+$ which python          [Linux/Mac]
+$ where python          [Windows]
+→ Output: .venv/bin/python (atau .venv\Scripts\python.exe)
+
+Which packages installed?
+$ pip list
+→ Shows: streamlit, pandas, sqlalchemy, dll
+
+Verify package location:
+$ pip show streamlit
+→ Location: .venv/lib/site-packages/streamlit
+
+
+═══════════════════════════════════════════════════════════════════════════════
+3. __pycache__/ DIRECTORY (Python Bytecode Cache)
+═══════════════════════════════════════════════════════════════════════════════
+
+PURPOSE:
+├─ Auto-generated by Python interpreter
+├─ Store compiled bytecode (.pyc files)
+├─ Speed up module imports (skip re-compilation)
+└─ Created automatically, NOT manually
+
+CONTENTS:
+├── main.cpython-39.pyc          [Compiled main.py bytecode]
+├── smoke_test.cpython-39.pyc    [Compiled smoke_test.py bytecode]
+└── ... (other .pyc files)
+
+File naming: <module_name>.cpython-<version>.pyc
+├─ Example: main.cpython-39.pyc = main.py compiled for Python 3.9
+├─ Example: main.cpython-310.pyc = main.py compiled for Python 3.10
+
+HOW IT WORKS:
+─────────────
+
+First import:
+$ python
+>>> import main
+→ Python kompile main.py → bytecode
+→ Simpan dalam __pycache__/main.cpython-39.pyc
+→ Load bytecode untuk faster execution
+
+Subsequent imports:
+>>> import main
+→ Python cek: Apakah main.py berubah?
+├─ NO → Load .pyc bytecode (fast!)
+└─ YES → Re-compile & update .pyc
+
+IMPORTANT: __pycache__/ TIDAK DISIMPAN DI GIT
+──────────────────────────────────────────────
+
+Alasan:
+├─ Generated automatically (tidak perlu di-commit)
+├─ .pyc files besar & tidak perlu version control
+├─ Different Python versions → different .pyc
+└─ Cause merge conflicts unnecessarily
+
+Check .gitignore:
+```
+__pycache__/
+*.pyc
+```
+
+MANUAL CLEANUP:
+───────────────
+
+Hapus __pycache__ untuk save space:
+$ rm -r __pycache__          [Linux/Mac]
+$ rmdir /s __pycache__       [Windows CMD]
+$ Remove-Item __pycache__ -Recurse  [Windows PowerShell]
+
+Safe untuk dihapus:
+├─ Python auto-recreate saat ada import
+├─ Tidak ada data yang hilang
+└─ Only side effect: First import sedikit lebih lambat
+
+
+═══════════════════════════════════════════════════════════════════════════════
+4. scripts/ DIRECTORY (Helper Scripts)
+═══════════════════════════════════════════════════════════════════════════════
+
+PURPOSE:
+├─ Utility scripts untuk administrative tasks
+├─ NOT part dari main application
+├─ Run secara manual atau via cron job
+└─ Support database operations & testing
+
+FILES & FUNGSI:
+───────────────
+
+A. scripts/check_users.py
+   ═══════════════════════
+   PURPOSE: Cek semua user dalam database
+   
+   FUNGSI:
+   ├─ Query table users
+   ├─ Tampilkan: id, username, role, unit, created_at
+   └─ Verify user access
+   
+   USAGE:
+   $ python scripts/check_users.py
+   
+   OUTPUT:
+   ID │ username  │ role  │ unit    │ created_at
+   ───┼───────────┼───────┼─────────┼─────────────
+   1  │ admin     │ admin │ ADMIN   │ 2026-01-20
+   2  │ humas_01  │ user  │ Humas   │ 2026-01-21
+   
+   WHEN TO USE:
+   ├─ Verify user list
+   ├─ Troubleshoot login issues
+   ├─ Audit user access
+
+
+B. scripts/hash_check.py
+   ═════════════════════
+   PURPOSE: Verify password hashing
+   
+   FUNGSI:
+   ├─ Test SHA256 hashing algorithm
+   ├─ Debug password mismatch issues
+   └─ Generate hash untuk password baru
+   
+   USAGE:
+   $ python scripts/hash_check.py
+   
+   EXAMPLE OUTPUT:
+   Password: "admin123"
+   Hash: "8c6976e5b5410c7d25c266a4a3c4ab1f"
+   
+   WHEN TO USE:
+   ├─ Verify password hashing works correctly
+   ├─ Debug login authentication issues
+   ├─ Generate hash untuk manual INSERT
+
+
+C. scripts/set_admin_pass.py
+   ═════════════════════════
+   PURPOSE: Reset admin password
+   
+   FUNGSI:
+   ├─ Set password untuk admin user
+   ├─ Update users table direct (via SQLite)
+   ├─ Verify password after update
+   └─ Use WAL mode untuk concurrency
+   
+   CODE SNIPPET:
+   ┌──────────────────────────────────────────────────┐
+   │ import sqlite3, hashlib                          │
+   │ DB = 'PLN_Ultimate_Monitoring_V7.db'             │
+   │ conn = sqlite3.connect(DB)                       │
+   │ new_hash = hashlib.sha256('admin123'.encode()..  │
+   │ conn.execute('UPDATE users SET password = ? ...' │
+   │ conn.commit()                                    │
+   │ # Verify:                                        │
+   │ conn.execute('SELECT password FROM users ...'    │
+   │ print(result == new_hash)                        │
+   │ conn.close()                                     │
+   └──────────────────────────────────────────────────┘
+   
+   USAGE:
+   1. Edit script: new_hash = hashlib.sha256('NEW_PASSWORD'.encode())...
+   2. Run: python scripts/set_admin_pass.py
+   3. Verify output: updated rows: 1
+   
+   WHEN TO USE:
+   ├─ Admin forgot password
+   ├─ Force reset password
+   ├─ Security breach → emergency reset
+
+
+D. scripts/test_login_admin.py
+   ═══════════════════════════
+   PURPOSE: Test admin login functionality
+   
+   FUNGSI:
+   ├─ Simulate login flow
+   ├─ Verify database connection
+   ├─ Check credentials without UI
+   └─ Troubleshoot authentication
+   
+   USAGE:
+   $ python scripts/test_login_admin.py
+   
+   TEST FLOW:
+   ├─ Connect to database
+   ├─ Query: SELECT * FROM users WHERE username='admin'
+   ├─ Hash input password
+   ├─ Compare hashes
+   ├─ Print: Login successful / Failed
+   └─ Verify: User data (id, role, unit)
+   
+   EXAMPLE OUTPUT:
+   ┌──────────────────────────────────────┐
+   │ Testing login...                     │
+   │ Username: admin                      │
+   │ Password: admin123                   │
+   │ ✅ Login successful!                 │
+   │ User ID: 1                           │
+   │ Role: admin                          │
+   │ Unit: ADMIN                          │
+   └──────────────────────────────────────┘
+   
+   WHEN TO USE:
+   ├─ Debug login issues
+   ├─ Verify database is accessible
+   ├─ Quick testing tanpa membuka UI
+
+
+E. scripts/update_and_test_dea.py
+   ═════════════════════════════════
+   PURPOSE: Batch update & test user data
+   
+   FUNGSI:
+   ├─ Update multiple users atau records
+   ├─ Data migration atau bulk changes
+   ├─ Test data integrity setelah update
+   └─ Verify changes sesuai ekspektasi
+   
+   USAGE:
+   $ python scripts/update_and_test_dea.py
+   
+   EXAMPLE OPERATIONS:
+   ├─ UPDATE users SET role='admin' WHERE username='test'
+   ├─ UPDATE monitoring_pln SET kategori='Korporat' WHERE kategori IS NULL
+   ├─ INSERT INTO daftar_akun_unit VALUES (...)
+   ├─ SELECT untuk verify: "Apakah updated dengan benar?"
+   └─ Print: Success / Failed
+   
+   WHEN TO USE:
+   ├─ Bulk user role changes
+   ├─ Data cleanup atau normalization
+   ├─ Testing data migration scripts
+
+
+DIRECTORY LOCATION: scripts/
+────────────────────────────
+
+Access dari root:
+$ python scripts/check_users.py
+$ cd scripts && python check_users.py
+$ python -m scripts.check_users  [jika punya __init__.py]
+
+SECURITY NOTE:
+───────────────
+
+Beberapa scripts akses database langsung (bypass ORM):
+├─ set_admin_pass.py: Direct password update (for emergency)
+├─ test_login_admin.py: Direct authentication test
+└─ Harus hati-hati dengan permissions
+
+RECOMMENDATION:
+├─ Simpan scripts/ di folder terlindungi
+├─ Tidak share credentials di scripts
+├─ Log changes untuk audit trail
+
+
+═══════════════════════════════════════════════════════════════════════════════
+5. requirements.txt (DEPENDENCIES FILE)
+═══════════════════════════════════════════════════════════════════════════════
+
+PURPOSE:
+├─ List semua Python packages yang diperlukan
+├─ Specify exact versions (atau ranges)
+├─ Enable reproducible environments
+└─ Share setup dengan developer lain
+
+CURRENT CONTENTS:
+──────────────────
+
+streamlit>=1.28.0
+├─ Web framework untuk UI
+├─ Version: 1.28.0 atau lebih baru
+└─ ~1-2 MB install
+
+pandas>=1.5.0
+├─ Data manipulation library
+├─ DataFrame operations, pivot, groupby
+└─ ~100 MB install (dengan dependencies)
+
+sqlalchemy>=2.0.0
+├─ ORM (Object-Relational Mapping)
+├─ Database abstraction layer
+└─ Works dengan SQLite, PostgreSQL, MySQL, dll
+
+instaloader>=4.10.0
+├─ Instagram scraping library
+├─ Download posts, captions, engagement metrics
+└─ ~5 MB install
+
+xlsxwriter>=3.1.0
+├─ Excel file generation
+├─ Create formatted workbooks & worksheets
+└─ ~1 MB install
+
+numpy>=1.24.0
+├─ Numerical computing
+├─ Random numbers, arrays, mathematical operations
+└─ ~100 MB install
+
+FILE FORMAT:
+────────────
+
+package_name >= version
+└─ >= : Greater than atau equal
+└─ == : Exact version
+└─ ~= : Compatible version
+└─ > , < , <= : Other operators
+
+EXAMPLES:
+├─ streamlit==1.28.0       (exact version)
+├─ pandas>=1.5.0           (1.5.0 or newer)
+├─ numpy>=1.24.0,<2.0.0    (version range)
+└─ requests~=2.28          (compatible release)
+
+HOW TO USE:
+───────────
+
+1. INSTALL Semua dependencies:
+   $ pip install -r requirements.txt
+   
+   This:
+   ├─ Read requirements.txt
+   ├─ Download packages dari PyPI
+   ├─ Install dalam venv/lib/site-packages/
+   └─ Create pip.lock file (optional)
+
+2. ADD New dependency:
+   Option A (automatic):
+   $ pip install new_package
+   $ pip freeze > requirements.txt
+   
+   Option B (manual):
+   Edit requirements.txt:
+   ```
+   streamlit>=1.28.0
+   pandas>=1.5.0
+   new_package>=1.0.0  ← Add this
+   ```
+
+3. UPDATE existing package:
+   $ pip install --upgrade package_name
+   $ pip freeze > requirements.txt
+
+4. CHECK installed versions:
+   $ pip list
+   
+   Output:
+   Package            Version
+   ─────────────────────────────
+   streamlit          1.30.2
+   pandas             1.5.3
+   sqlalchemy         2.0.1
+   instaloader        4.10.0
+   xlsxwriter         3.1.2
+   numpy              1.24.1
+
+BEST PRACTICES:
+───────────────
+
+✓ Always commit requirements.txt ke git
+✓ Use specific versions (or ranges) untuk stability
+✓ Regularly update packages (security patches)
+✓ Test setelah update major version
+✓ Keep separate requirements files:
+  ├─ requirements-dev.txt (pytest, black, flake8)
+  └─ requirements-prod.txt (production only)
+
+VERSION MANAGEMENT STRATEGIES:
+──────────────────────────────
+
+Strategy 1: Pinned (Exact versions)
+├─ streamlit==1.28.0
+├─ pandas==1.5.0
+└─ PROS: Reproducible, stable
+└─ CONS: Miss security patches
+
+Strategy 2: Loose (Compatible ranges)
+├─ streamlit>=1.28.0
+├─ pandas>=1.5.0
+└─ PROS: Get updates & patches
+└─ CONS: Might introduce breaking changes
+
+Strategy 3: Hybrid (Recommended)
+├─ streamlit>=1.28.0,<2.0.0    (major version locked)
+├─ pandas>=1.5.0,<3.0.0
+└─ PROS: Balance stability & updates
+
+
+═══════════════════════════════════════════════════════════════════════════════
+6. smoke_test.py (DATABASE TESTING & VALIDATION)
+═══════════════════════════════════════════════════════════════════════════════
+
+PURPOSE:
+├─ "Smoke test" = quick validation sebelum production
+├─ Non-destructive checks (read-only queries)
+├─ Simple insert/update untuk test flows
+├─ Validate database structure & relationships
+└─ Verify data integrity
+
+WHAT IT DOES:
+──────────────
+
+1. CHECK Database File Exists
+   ├─ Verify PLN_Ultimate_Monitoring_V7.db ada
+   └─ Fail fast jika file missing
+
+2. CHECK Required Tables Exist
+   ├─ users
+   ├─ daftar_akun_unit
+   ├─ pengajuan_dokumentasi
+   ├─ dokumentasi_calendar
+   └─ monitoring_pln
+   
+   For each: SELECT name FROM sqlite_master WHERE type='table'
+
+3. CHECK Indices & Constraints
+   ├─ PRAGMA index_list('monitoring_pln')
+   ├─ Verify UNIQUE constraint pada link_pemberitaan
+   └─ Ensure indices created untuk optimization
+
+4. INSERT Test Data Flow
+   ├─ Find admin user: SELECT id FROM users WHERE username='admin'
+   ├─ INSERT test unit: daftar_akun_unit (UNIT_TEST, unit_test_ig)
+   ├─ CREATE pengajuan: INSERT into pengajuan_dokumentasi
+   ├─ CREATE calendar: INSERT into dokumentasi_calendar
+   ├─ UPDATE pengajuan: approved → done + hasil links
+   ├─ VERIFY: Check status changes applied correctly
+   └─ Final state: Both records marked 'done' dengan hasil links
+
+5. TEST ON CONFLICT Behavior
+   ├─ Insert duplicate link_pemberitaan (should conflict)
+   ├─ Verify ON CONFLICT UPDATE logic works
+   ├─ Confirm: Metrics updated, tidak duplicate created
+
+CODE STRUCTURE:
+────────────────
+
+┌──────────────────────────────────────────┐
+│ smoke_test.py                            │
+├──────────────────────────────────────────┤
+│ 1. Setup                                 │
+│    ├─ Connect ke database                │
+│    └─ Verify file exists                 │
+│                                          │
+│ 2. Schema Validation                     │
+│    ├─ Check tables                       │
+│    ├─ Check indices                      │
+│    └─ Check constraints                  │
+│                                          │
+│ 3. Data Integrity Tests                  │
+│    ├─ Find admin user                    │
+│    ├─ Insert test unit                   │
+│    ├─ Create test pengajuan              │
+│    ├─ Create calendar event              │
+│    ├─ Update status flow                 │
+│    └─ Verify results                     │
+│                                          │
+│ 4. ON CONFLICT Tests                     │
+│    ├─ Insert post dengan link            │
+│    ├─ Try insert duplicate link          │
+│    └─ Verify conflict handling           │
+│                                          │
+│ 5. Cleanup (optional)                    │
+│    ├─ Delete test records                │
+│    └─ Leave database clean               │
+└──────────────────────────────────────────┘
+
+USAGE:
+──────
+
+Run smoke test:
+$ python smoke_test.py
+
+Output example:
+┌────────────────────────────────────────┐
+│ DB path: PLN_Ultimate_Monitoring_V7.db │
+│ Checking required tables...             │
+│  - users: OK                            │
+│  - daftar_akun_unit: OK                 │
+│  - pengajuan_dokumentasi: OK            │
+│  - dokumentasi_calendar: OK             │
+│  - monitoring_pln: OK                   │
+│                                        │
+│ Checking unique index...                │
+│ Indexes found: [(...]                  │
+│                                        │
+│ Admin id: 1                             │
+│ Inserting test unit...                  │
+│ Unit inserted.                          │
+│                                        │
+│ Creating test pengajuan...              │
+│ Pengajuan id: 5                         │
+│                                        │
+│ Inserting calendar event...             │
+│ Calendar event created.                 │
+│                                        │
+│ Updating pengajuan to done...           │
+│ Pengajuan marked done and hasil links   │
+│ saved.                                  │
+│                                        │
+│ ✅ ALL TESTS PASSED                    │
+└────────────────────────────────────────┘
+
+WHEN TO USE:
+─────────────
+
+✓ Before deploying aplikasi ke production
+✓ After database migration atau schema changes
+✓ Debug data flow atau relationship issues
+✓ Verify database integrity setelah backup restore
+✓ Quick sanity check tanpa manual testing
+
+ADVANTAGES:
+────────────
+
+✓ Automated testing (no manual steps)
+✓ Quick (runs dalam seconds)
+✓ Comprehensive (check multiple flows)
+✓ Non-destructive (test data isolated)
+✓ Easy to extend (add more tests)
+
+OPTIONAL: Save Output to File
+──────────────────────────────
+
+$ python smoke_test.py > smoke_output.txt
+
+File smoke_output.txt:
+├─ Contains all test output
+├─ Good untuk documentation
+└─ Reference jika ada issues
+
+
+═══════════════════════════════════════════════════════════════════════════════
+7. smoke_output.txt (TEST OUTPUT LOG)
+═════════════════════════════════════════════════════════════════════════════════
+
+PURPOSE:
+├─ Log output dari smoke_test.py execution
+├─ Record hasil testing untuk reference
+├─ Troubleshoot jika test gagal
+└─ Documentation untuk code review
+
+CONTENTS:
+─────────
+
+Timestamp log:
+├─ When test was run
+├─ Which tables checked
+├─ Which data inserted
+├─ Status results (PASS/FAIL)
+└─ Any errors atau warnings
+
+USAGE:
+──────
+
+1. Generate log (redirect output):
+   $ python smoke_test.py > smoke_output.txt
+
+2. View log:
+   $ cat smoke_output.txt         [Linux/Mac]
+   $ type smoke_output.txt        [Windows]
+   $ Get-Content smoke_output.txt [PowerShell]
+
+3. Append to existing log:
+   $ python smoke_test.py >> smoke_output.txt
+   (>> = append, instead of > = overwrite)
+
+ANALYSIS:
+──────────
+
+Search log untuk errors:
+$ grep -i error smoke_output.txt
+$ grep -i failed smoke_output.txt
+
+Count test results:
+$ grep "OK" smoke_output.txt | wc -l
+→ Shows number of passed tests
+
+Keep log history:
+$ cp smoke_output.txt smoke_output_20260131.txt
+→ Backup dengan timestamp
+
+CLEANUP:
+─────────
+
+Clear old log:
+$ rm smoke_output.txt
+$ echo "" > smoke_output.txt
+
+
+═══════════════════════════════════════════════════════════════════════════════
+8. tools_inspect_db.py (DATABASE INSPECTION & ANALYSIS TOOL)
+═════════════════════════════════════════════════════════════════════════════════
+
+PURPOSE:
+├─ Inspect & analyze database contents
+├─ View sample data tanpa opening DB directly
+├─ Generate insights tentang data distribution
+├─ Quick analytics without Streamlit UI
+└─ Troubleshooting & debugging tool
+
+WHAT IT DOES:
+──────────────
+
+1. CONNECT ke Database
+   ├─ Open PLN_Ultimate_Monitoring_V7.db
+   ├─ Query top 200 rows dari monitoring_pln
+   └─ Convert ke pandas DataFrame
+
+2. DISPLAY Basic Info
+   ├─ Total rows: {count}
+   ├─ Sample data (head)
+   └─ Distinct values per column
+
+3. PERFORM Analysis
+   ├─ Pivot table: Unit × Bulan (count posts)
+   ├─ Show most active units
+   ├─ Top accounts by post count
+   ├─ Engagement summary (likes, views)
+   └─ Month distribution
+
+CODE STRUCTURE:
+────────────────
+
+┌──────────────────────────────────────┐
+│ tools_inspect_db.py                  │
+├──────────────────────────────────────┤
+│ 1. Import libraries                  │
+│    ├─ sqlite3                        │
+│    └─ pandas                         │
+│                                      │
+│ 2. Connect to DB                     │
+│    └─ sqlite3.connect(DB)            │
+│                                      │
+│ 3. Query data                        │
+│    └─ SELECT id, tanggal, bulan,     │
+│       judul, link, pic_unit, ..      │
+│       FROM monitoring_pln LIMIT 200  │
+│                                      │
+│ 4. Load to DataFrame                 │
+│    └─ pd.read_sql_query(sql, conn)   │
+│                                      │
+│ 5. Display results                   │
+│    ├─ Print total rows               │
+│    ├─ Print head (first 5 rows)      │
+│    ├─ Print sample id & link         │
+│    └─ Print distinct bulan values    │
+│                                      │
+│ 6. Pivot analysis                    │
+│    ├─ Create pivot table             │
+│    ├─ Unit (rows) × Bulan (columns)  │
+│    ├─ Values: count of link          │
+│    └─ Show pivot shape & data        │
+│                                      │
+│ 7. Top accounts ranking              │
+│    ├─ Group by akun, pic_unit        │
+│    ├─ Count posts                    │
+│    ├─ Sum likes & views              │
+│    └─ Display top 10                 │
+│                                      │
+│ 8. Error handling                    │
+│    └─ Try/Except blocks              │
+└──────────────────────────────────────┘
+
+USAGE:
+──────
+
+Run inspection:
+$ python tools_inspect_db.py
+
+Example Output:
+┌────────────────────────────────────────┐
+│ ROWS: 245                              │
+│                                        │
+│ -- id and link sample --               │
+│ id  │ link_pemberitaan                 │
+│ ────┼──────────────────────────────     │
+│ 1   │ https://instagram.com/p/123..    │
+│ 2   │ https://instagram.com/p/456..    │
+│                                        │
+│ -- full head --                        │
+│ tanggal │ bulan │ judul │ likes │ views│
+│ 15/01   │ Jan   │ "..." │ 150   │ 5000 │
+│ ...                                    │
+│                                        │
+│ Distinct bulan values:                 │
+│ ['Januari', 'Februari', 'Maret', ...]  │
+│                                        │
+│ Pivot shape: (5 units, 12 months)      │
+│ Pivot:                                 │
+│ Unit     │ Jan │ Feb │ Mar │ ... │ Dec │
+│ ──────────┼─────┼─────┼─────┼─────┼─────│
+│ Humas    │ 15  │ 20  │ 18  │ ... │ 22  │
+│ Operasi  │ 10  │ 12  │ 14  │ ... │ 16  │
+│                                        │
+│ Top accounts by Post count:            │
+│ akun              │ Post │ Likes │ Unit │
+│ ──────────────────┼──────┼───────┼──────│
+│ @pln_uid_humas    │ 45   │ 8500  │ Humas│
+│ @pln_uid_operasi  │ 32   │ 5200  │ Ops  │
+│                                        │
+│ (Done, no errors)                      │
+└────────────────────────────────────────┘
+
+WHEN TO USE:
+─────────────
+
+✓ Quick data inspection tanpa opening database GUI
+✓ Verify data distribution & patterns
+✓ Check data quality (distinct values, null counts)
+✓ Analyze engagement metrics summary
+✓ Find top performers / outliers
+✓ Troubleshoot data consistency issues
+✓ Quick report generation for stakeholders
+✓ Performance metrics (row count, data size)
+
+ADVANTAGES:
+────────────
+
+✓ Fast execution (seconds)
+✓ No dependencies on Streamlit or UI
+✓ Can run in CI/CD pipelines
+✓ Easy to extend dengan more analysis
+✓ Portable (works on any system with Python)
+✓ Good untuk automated monitoring
+
+EXAMPLE: Run Every Day
+───────────────────────
+
+Cron job (Linux/Mac):
+0 8 * * * cd /path/to/project && python tools_inspect_db.py > daily_report.txt
+
+Or PowerShell scheduled task (Windows):
+$trigger = New-JobTrigger -Daily -At 8:00AM
+$action = New-ScheduledJobOption -RunElevated
+Register-ScheduledJob -Trigger $trigger -ScriptBlock {python tools_inspect_db.py} -Name DailyInspect
+
+
+═══════════════════════════════════════════════════════════════════════════════
+9. MAIN APPLICATION FILES
+═════════════════════════════════════════════════════════════════════════════════
+
+A. main.py (PRIMARY APPLICATION)
+   ════════════════════════════════
+
+   SIZE: ~3073 lines (large file!)
+   
+   PURPOSE:
+   ├─ Main Streamlit application
+   ├─ All UI components & pages
+   ├─ User authentication & role management
+   ├─ Business logic untuk semua features
+   └─ Database integration
+   
+   CONTENT BREAKDOWN:
+   ├─ Imports & Configuration (lines 1-50)
+   ├─ Caching & Session Management (lines 17-48)
+   ├─ Database Functions (lines 52-400)
+   ├─ Authentication Pages (lines 120-300)
+   ├─ Global CSS Styling (lines 500-700)
+   ├─ Helper Functions (lines 699-1000)
+   ├─ Instagram Rate Limiting (lines 747-800)
+   ├─ Scraper Engine (lines 802-912)
+   ├─ Analytics & Export (lines 912-1000)
+   ├─ Calendar Functions (lines 1000-1200)
+   └─ Page Routing & Rendering (lines 1150-3073)
+   
+   PAGE STRUCTURE (Role-based):
+   ├─ LOGIN PAGE (No role)
+   ├─ ADMIN PAGES:
+   │  ├─ Dashboard Admin
+   │  ├─ Rekapitulasi Monitoring
+   │  ├─ Sinkronisasi Data
+   │  ├─ Input Manual
+   │  ├─ Pengajuan Dokumentasi
+   │  ├─ Kalender Dokumentasi
+   │  ├─ Pengaturan Unit (TBD)
+   │  ├─ Manajemen User
+   │  └─ Pengaturan Admin
+   └─ USER PAGES:
+      ├─ Dashboard User
+      ├─ Kalender Dokumentasi
+      ├─ Pengajuan Dokumentasi
+      └─ Riwayat Dokumentasi
+   
+   HOW TO RUN:
+   $ python -m streamlit run main.py
+   → Opens browser: http://localhost:8501
+
+
+B. dokum.txt (OLD DOCUMENTATION BACKUP)
+   ════════════════════════════════════
+
+   PURPOSE:
+   ├─ Backup dari dokumentasi lama
+   ├─ Contains old code snippets & notes
+   ├─ Kept for reference (bukan production)
+   └─ Can be safely deleted
+   
+   RECOMMENDATION:
+   ├─ Keep for historical reference
+   └─ Or delete jika space needed
+
+
+═════════════════════════════════════════════════════════════════════════════════
+10. DATABASE FILES (MAIN DATABASE & WAL FILES)
+═════════════════════════════════════════════════════════════════════════════════
+
+A. PLN_Ultimate_Monitoring_V7.db (MAIN DATABASE FILE)
+   ════════════════════════════════════════════════════
+
+   TYPE: SQLite3 Database (binary format)
+   
+   SIZE: ~1-50 MB (depending on data amount)
+   
+   PURPOSE:
+   ├─ Primary data storage
+   ├─ Contains 5 tables: users, units, monitoring, requests, calendar
+   ├─ Persistent storage across application restarts
+   └─ Shared between all users
+   
+   STRUCTURE (Binary):
+   ├─ Database header
+   ├─ Table definitions & schemas
+   ├─ B-tree pages (data storage)
+   ├─ Indices
+   ├─ Free list (deleted space)
+   └─ Metadata
+   
+   HOW TO ACCESS:
+   ──────────────
+   
+   Option 1: Via Python (programmatic)
+   ┌──────────────────────────────────────┐
+   │ import sqlite3                       │
+   │ conn = sqlite3.connect('.../db')     │
+   │ cursor = conn.cursor()               │
+   │ cursor.execute('SELECT * FROM users')│
+   │ data = cursor.fetchall()             │
+   │ conn.close()                         │
+   └──────────────────────────────────────┘
+   
+   Option 2: Command line
+   ┌──────────────────────────────────────┐
+   │ sqlite3 PLN_Ultimate_Monitoring_V7.db│
+   │ sqlite> SELECT * FROM users;         │
+   │ sqlite> .tables                      │
+   │ sqlite> .schema monitoring_pln       │
+   │ sqlite> .quit                        │
+   └──────────────────────────────────────┘
+   
+   Option 3: GUI tools
+   ├─ DB Browser for SQLite (cross-platform)
+   ├─ SQLiteStudio (advanced)
+   ├─ DataGrip (JetBrains)
+   ├─ SQL Server Management Studio (SSMS)
+   └─ phpMyAdmin style web GUI
+   
+   DOES NOT DELETE WHEN:
+   ─────────────────────
+   
+   ✓ Restart application
+   ✓ Browser refresh
+   ✓ Session logout
+   └─ Data persists until manually deleted or database cleared
+
+   DELETE / RESET:
+   ───────────────
+   
+   Soft reset (clear data, keep schema):
+   $ sqlite3 PLN_Ultimate_Monitoring_V7.db
+   sqlite> DELETE FROM monitoring_pln;
+   sqlite> DELETE FROM pengajuan_dokumentasi;
+   sqlite> .quit
+   
+   Hard reset (delete entire file):
+   $ rm PLN_Ultimate_Monitoring_V7.db
+   → Application akan auto-recreate saat di-run
+   
+   BACKUP:
+   ───────
+   
+   Simple copy:
+   $ cp PLN_Ultimate_Monitoring_V7.db PLN_Ultimate_Monitoring_V7_backup_20260131.db
+   
+   Scheduled backup (Windows):
+   powershell:
+   $ robocopy . backup PLN_Ultimate_Monitoring_V7.db
+
+
+B. PLN_Ultimate_Monitoring_V7.db-shm (SHADOW FILE)
+   ═════════════════════════════════════════════════
+
+   WAL COMPONENT #1: Shadow Memory File
+   
+   PURPOSE:
+   ├─ Part of Write-Ahead Logging (WAL) mechanism
+   ├─ Temporary file created by SQLite when WAL is enabled
+   ├─ Shared memory index untuk WAL
+   └─ Speed up read operations
+   
+   WHAT IS WAL?
+   ────────────
+   
+   Traditional journaling (PRAGMA journal_mode=DELETE):
+   ├─ Write changes ke temp file first
+   ├─ Then write ke main DB file
+   ├─ Then delete temp file
+   └─ Slow! (multiple disk I/O)
+   
+   Write-Ahead Logging (PRAGMA journal_mode=WAL):
+   ├─ Write changes ke WAL log file (fast append)
+   ├─ Main DB file left unchanged
+   ├─ Reader can still read old DB file
+   ├─ Checkpoint process merges WAL into DB
+   └─ Better concurrency! (readers & writers parallel)
+   
+   SIZE: Usually small (< 10 MB)
+   
+   AUTO-CREATED: When WAL mode is enabled:
+   $ PRAGMA journal_mode=WAL;
+   
+   WHEN USED:
+   ──────────
+   
+   get_db_connection() in main.py:
+   ┌──────────────────────────────────────┐
+   │ def get_db_connection():             │
+   │     conn = sqlite3.connect(DB_PATH..)│
+   │     conn.execute("PRAGMA journal... │
+   │     return conn                      │
+   └──────────────────────────────────────┘
+   
+   SAFE TO DELETE?
+   ────────────────
+   
+   ✓ YES, if no active connections
+   ⚠ NO, while application running
+   ✓ Automatically cleaned up by SQLite
+   
+   Manual cleanup (application must be closed):
+   $ rm PLN_Ultimate_Monitoring_V7.db-shm
+
+
+C. PLN_Ultimate_Monitoring_V7.db-wal (WAL LOG FILE)
+   ═════════════════════════════════════════════════
+
+   WAL COMPONENT #2: Write-Ahead Log File
+   
+   PURPOSE:
+   ├─ Contains recently written transactions
+   ├─ Append-only log (faster writes)
+   ├─ Used during recovery if crash happens
+   └─ Checkpointed to main DB periodically
+   
+   SIZE: Usually < 5 MB (depends on transaction volume)
+   
+   CONTAINS:
+   ─────────
+   
+   ├─ INSERT statements log
+   ├─ UPDATE statements log
+   ├─ DELETE statements log
+   ├─ Transaction metadata
+   └─ Frame pointers (what's been written)
+   
+   HOW IT WORKS:
+   ──────────────
+   
+   1. User triggers data change (e.g., INSERT)
+   
+   2. SQLite writes to WAL log:
+      ├─ Fast (append-only write)
+      └─ Safe (can recover if crash)
+   
+   3. Changes visible immediately to readers
+      └─ Reading original DB + WAL file
+   
+   4. Checkpoint process (periodic):
+      ├─ Merge WAL frames into main DB
+      ├─ Reset WAL log
+      └─ Frees disk space
+   
+   CHECKPOINT TRIGGERS:
+   ────────────────────
+   
+   Automatic (defaults):
+   ├─ When WAL reaches ~10 MB
+   ├─ On connection close
+   ├─ Timeout (every 1000 pages)
+   
+   Manual:
+   ┌──────────────────────────────────────┐
+   │ sqlite3 PLN_Ultimate_Monitoring_V7.db│
+   │ sqlite> PRAGMA wal_checkpoint(RESTART);
+   │ sqlite> .quit                        │
+   └──────────────────────────────────────┘
+   
+   Python:
+   ┌──────────────────────────────────────┐
+   │ conn.execute("PRAGMA wal_checkpoint")│
+   │ conn.commit()                        │
+   │ conn.close()                         │
+   └──────────────────────────────────────┘
+   
+   OPTIMIZATION (Force checkpoint):
+   $ sqlite3 PLN_Ultimate_Monitoring_V7.db "PRAGMA wal_checkpoint(TRUNCATE);"
+   
+   SAFE TO DELETE?
+   ────────────────
+   
+   ✓ YES, after checkpoint (closes app first)
+   ⚠ NO, while application running
+   ✓ Data NOT lost (already in main DB after checkpoint)
+   
+   Manual cleanup (application must be closed):
+   $ rm PLN_Ultimate_Monitoring_V7.db-wal
+
+WAL BENEFITS:
+──────────────
+
+✓ Better concurrency (readers & writers simultaneous)
+✓ Faster writes (append-only, sequential I/O)
+✓ Crash recovery (WAL log preserved)
+✓ Reduced lock contention
+✓ Performance improvement ~5-10x for busy systems
+
+WAL TRADEOFFS:
+───────────────
+
+⚠ Extra files (-shm, -wal)
+⚠ Slightly larger disk usage
+⚠ Network filesystems may have issues
+⚠ Requires more memory (page cache)
+
+DISABLE WAL (if needed):
+────────────────────────
+
+$ sqlite3 PLN_Ultimate_Monitoring_V7.db
+sqlite> PRAGMA journal_mode=DELETE;
+sqlite> .quit
+
+But NOT RECOMMENDED for this application (need concurrency)!
+
+
+═════════════════════════════════════════════════════════════════════════════════
+SUMMARY TABLE: FILE PURPOSES & SAFETY
+═════════════════════════════════════════════════════════════════════════════════
+
+FILE/FOLDER              │ PURPOSE                    │ CAN DELETE? │ SIZE
+─────────────────────────┼────────────────────────────┼─────────────┼─────────
+.git/                    │ Version control            │ NO*         │ ~10 MB
+.venv/                   │ Python environment         │ YES (safe)  │ 50-200 MB
+__pycache__/             │ Python bytecode cache      │ YES (safe)  │ 1-10 MB
+scripts/                 │ Admin utilities            │ NO          │ <100 KB
+main.py                  │ Main application           │ NO          │ ~100 KB
+requirements.txt         │ Dependencies list          │ NO          │ <1 KB
+smoke_test.py            │ Database testing           │ NO          │ ~10 KB
+smoke_output.txt         │ Test output log            │ YES (safe)  │ varies
+tools_inspect_db.py      │ DB inspection tool         │ NO          │ ~5 KB
+dokum.txt                │ Old documentation          │ YES (safe)  │ ~100 KB
+─────────────────────────┼────────────────────────────┼─────────────┼─────────
+.db (main database)      │ PRIMARY DATA               │ NO (backup!)│ 1-50 MB
+.db-shm (WAL shadow)     │ WAL shadow memory          │ YES*        │ <10 MB
+.db-wal (WAL log)        │ WAL transaction log        │ YES*        │ <5 MB
+─────────────────────────┴────────────────────────────┴─────────────┴─────────
+
+NOTES:
+├─ * Can delete ONLY when application NOT RUNNING
+├─ DELETE = Will lose data/history
+├─ YES (safe) = Can delete without data loss
+└─ All application files should be in git version control
+
+
+═════════════════════════════════════════════════════════════════════════════════
+CLEANUP & MAINTENANCE
+═════════════════════════════════════════════════════════════════════════════════
+
+SAFE CLEANUP (RECOMMENDED):
+──────────────────────────
+
+1. Remove bytecode cache (safe, auto-recreate):
+   $ rmdir /s __pycache__           [Windows]
+   $ rm -r __pycache__              [Linux]
+   → Saves ~5 MB space
+
+2. Remove test logs (safe, old tests):
+   $ del smoke_output.txt           [Windows]
+   $ rm smoke_output.txt            [Linux]
+   → Saves ~varies
+
+3. Remove old DB backup (if have multiple):
+   $ del PLN_Ultimate_Monitoring_V7_old.db
+   → Manual cleanup
+
+4. Run WAL checkpoint (if app closed):
+   $ sqlite3 PLN_Ultimate_Monitoring_V7.db "PRAGMA wal_checkpoint(TRUNCATE);"
+   → Merges WAL into main DB, frees space
+
+UNSAFE CLEANUP (AVOID):
+────────────────────────
+
+✗ Delete .git/ → Lose version history
+✗ Delete main.py → App won't run
+✗ Delete requirements.txt → Can't reinstall
+✗ Delete .db file → LOSE ALL DATA
+✗ Delete while app running → Corruption risk
+
+BACKUP STRATEGY:
+─────────────────
+
+Weekly:
+├─ Copy .db file to external drive
+├─ $ cp PLN_Ultimate_Monitoring_V7.db backup/pln_db_$(date +%Y%m%d).db
+└─ Or use cloud: Google Drive, OneDrive, etc
+
+Version control:
+├─ Git backup (code only, not .db)
+├─ $ git commit -am "Documentation update"
+├─ $ git push
+└─ Good untuk code, not data
+
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+
+Version: 1.0
+Last Update: 31 Januari 2026
+Document Type: Folder & File Structure Reference
+For Questions: Check main DOKUMENTASI_LENGKAP.txt
+
+================================================================================

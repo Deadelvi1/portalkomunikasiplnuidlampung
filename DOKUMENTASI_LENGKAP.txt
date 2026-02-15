@@ -1,0 +1,2104 @@
+================================================================================
+    DOKUMENTASI LENGKAP SISTEM PLN UID LAMPUNG HUMAS
+    Platform Manajemen Sosial Media & Pengadaan Dokumentasi
+    Versi: 1.0 | Last Updated: 31 Januari 2026
+================================================================================
+
+📌 TABLE OF CONTENTS
+================================================================================
+1. RINGKASAN SISTEM
+2. ARSITEKTUR DATABASE & ERD
+3. ALUR SISTEM (WORKFLOW)
+4. PENJELASAN SETIAP FUNGSI & LIBRARY
+5. STRUKTUR DATABASE DETAIL
+6. OPERASI DATABASE (CRUD, RESET, MIGRASI)
+7. GUIDE PENGGUNAAN SISTEM
+8. TROUBLESHOOTING & FAQ
+
+================================================================================
+1. RINGKASAN SISTEM
+================================================================================
+
+Nama Proyek: PLN UID Lampung Humas - Portal Komunikasi Digital
+Tujuan: Platform manajemen konten media sosial dan pengadaan dokumentasi
+Teknologi: Python (Streamlit), SQLite3, SQLAlchemy, Instaloader, Pandas
+
+Modul Utama:
+✅ main.py         - Aplikasi utama berbasis Streamlit
+✅ smoke_test.py   - Testing & validasi database flows
+✅ tools_inspect_db.py - Inspect data monitoring
+✅ scripts/        - Helper scripts untuk admin
+
+Database: PLN_Ultimate_Monitoring_V7.db (SQLite3)
+
+Fitur Utama:
+1. Dashboard Admin - Monitoring statistik real-time
+2. Scraping Instagram - Automasi pengambilan data konten
+3. Rekapitulasi Monitoring - Database editor dengan heatmap
+4. Sinkronisasi Data - Pull data dari multiple akun
+5. Input Manual - Tambah data secara manual
+6. Pusat Kendali Dokumentasi - Review & approval pengajuan
+7. Kalender Dokumentasi - Visualisasi jadwal kegiatan
+8. Manajemen User - CRUD user dengan role-based access
+
+================================================================================
+2. ARSITEKTUR DATABASE & ERD (Entity Relationship Diagram)
+================================================================================
+
+Catatan penting: Berikut ERD dan schema yang **saat ini diimplementasikan** di `main.py` (apa yang dibuat/di-ALTER saat init). Di bagian bawah ada *rekomendasi* kolom/tabel opsional untuk audit dan pelacakan yang belum diimplementasikan.
+
+AS-IMPLEMENTED (dari `main.py`)
+
+┌─────────────────────────────────┐
+│          USERS (Auth)           │
+├─────────────────────────────────┤
+│ ∞ id INTEGER PK                 │
+│ • username TEXT UNIQUE NOT NULL │
+│ • password TEXT NOT NULL        │
+│ • role TEXT DEFAULT 'user'      │
+│ • unit TEXT                     │
+│ • created_at TEXT               │
+└─────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│      PENGAJUAN_DOKUMENTASI (Request)                │
+├─────────────────────────────────────────────────────┤
+│ ∞ id INTEGER PK                                    │
+│ • nama_pengaju TEXT                                 │
+│ • user_id INTEGER (FK → users.id)                   │
+│ • nomor_telpon TEXT                                 │
+│ • unit TEXT                                         │
+│ • tanggal_acara TEXT                                │
+│ • jam_mulai TEXT, jam_selesai TEXT                  │
+│ • output_link_drive TEXT, output_type TEXT          │
+│ • biaya REAL DEFAULT 0                              │
+│ • deadline_penyelesaian TEXT                        │
+│ • status TEXT DEFAULT 'pending'                     │
+│ • hasil_link_drive TEXT, hasil_video TEXT, hasil_flyer TEXT │
+│ • rejection_reason TEXT, notes TEXT                 │
+│ • added_to_calendar INTEGER DEFAULT 0               │
+│ • created_at TEXT, updated_at TEXT                  │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│   DOKUMENTASI_CALENDAR (Scheduling)                 │
+├─────────────────────────────────────────────────────┤
+│ ∞ id INTEGER PK                                     │
+│ • pengajuan_id INTEGER (FK → pengajuan_dokumentasi.id) │
+│ • tanggal TEXT                                      │
+│ • nama_kegiatan TEXT                                │
+│ • unit TEXT                                         │
+│ • status TEXT                                       │
+│ • doc_link TEXT (nullable)                          │
+│ • created_at TEXT                                   │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│      DAFTAR_AKUN_UNIT (Account Registry)            │
+├─────────────────────────────────────────────────────┤
+│ ∞ id INTEGER PK                                     │
+│ • nama_unit TEXT                                    │
+│ • username_ig TEXT UNIQUE                           │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│       MONITORING_PLN (Content Database - Main)                                           │
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│ ∞ id INTEGER PK                                                                            │
+│ • tanggal TEXT, bulan TEXT, tahun TEXT                                                       │
+│ • judul_pemberitaan TEXT                                                                     │
+│ ◆ link_pemberitaan TEXT UNIQUE (prevent duplicate)                                           │
+│ • platform TEXT (ensure_column sets default 'Instagram' on migration)                        │
+│ • tipe_konten TEXT (ensure_column sets default 'Feeds')                                      │
+│ • pic_unit TEXT                                                                              │
+│ • akun TEXT                                                                                  │
+│ • kategori TEXT                                                                              │
+│ • likes INTEGER DEFAULT 0, comments INTEGER DEFAULT 0, views INTEGER DEFAULT 0               │
+│ • last_updated TEXT                                                                          │
+│ • source TEXT DEFAULT 'Scraping' (added by migration if absent)                              │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+
+RELASI ANTAR TABEL (AS-IMPLEMENTED):
+- users → pengajuan_dokumentasi: 1-to-many (user_id)
+- pengajuan_dokumentasi → dokumentasi_calendar: 1-to-many (pengajuan_id) — in UI flows usually 1-to-1, but DB allows multiple calendar rows per pengajuan
+- daftar_akun_unit → monitoring_pln: implicit relationship by `username_ig`/`pic_unit` (NO FK in DB)
+- monitoring_pln: standalone content table with UNIQUE constraint on `link_pemberitaan`
+
+UNIQUE CONSTRAINTS (AS-IMPLEMENTED):
+- users.username [UNIQUE]
+- daftar_akun_unit.username_ig [UNIQUE]
+- monitoring_pln.link_pemberitaan [UNIQUE]
+
+REKOMENDASI PERUBAHAN SKEMA (OPTIONAL) ✅
+- Add audit trail for manual inputs to improve traceability:
+  CREATE TABLE input_manual_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,             -- FK → users.id (who input)
+      monitoring_id INTEGER,       -- FK → monitoring_pln.id (nullable)
+      tanggal_input TEXT,          -- timestamp saat input
+      sumber_detail TEXT,          -- deskripsi / cara input (contoh: 'admin form')
+      notes TEXT,
+      created_at TEXT
+  );
+
+- Consider adding `monitoring_pln.created_by INTEGER` and `monitoring_pln.source_details TEXT` if you want to record who added manual records and extra notes (not currently implemented in `main.py`).
+- If you want admin-created ad-hoc calendar events without creating a `pengajuan_dokumentasi`, add `dokumentasi_calendar.created_by INTEGER` (FK → users.id) and allow `pengajuan_id` to be nullable; currently the app creates a `pengajuan_dokumentasi` when admin adds an agenda.
+
+Notes:
+- The documentation above reflects exactly what `init_db()` and `ensure_columns()` in `main.py` create; recommended additions must be implemented in code (migrations + UI) if desired.
+
+---
+
+
+
+================================================================================
+3. ALUR SISTEM (WORKFLOW)
+================================================================================
+
+A. ALUR AUTENTIKASI
+═══════════════════════════════════════════════════════════════════
+
+  ┌─────────────────┐
+  │  User Membuka   │
+  │  Aplikasi       │
+  └────────┬────────┘
+           │
+           ↓
+  ┌────────────────────────────────────┐
+  │ Cek Session State: user exists?    │
+  └────────┬───────────────────────────┘
+           │
+     ┌─────┴──────┐
+     │ NO         │ YES
+     │            │
+     ↓            ↓
+  Show        Load User
+  Login       Profile
+  Page        (role, unit)
+  (Form)      │
+  │           │
+  │ User input username + password
+  │ │
+  │ ↓
+  │ Hash password (SHA256)
+  │ │
+  │ ↓
+  │ Query: SELECT id, username, role, unit 
+  │        FROM users WHERE username=? AND password=?
+  │ │
+  │ ├─ Found → Save to session_state['user']
+  │ │         Determine role (admin/user)
+  │ │         Navigate to Dashboard
+  │ │         st.rerun()
+  │ │
+  │ └─ Not Found → Show error "Username/Password Salah"
+  │
+  └─→ Register Form (Optional)
+      │
+      ├─ Input: username, password, confirm, unit
+      ├─ Validasi: password length >= 6, match confirmation
+      ├─ Hash password
+      ├─ INSERT INTO users (username, password, role, unit, created_at)
+      │  VALUES (?, ?, 'user', ?, NOW())
+      ├─ Success: Show "Berhasil! Silakan Login"
+      └─ Error: "Username sudah terpakai"
+
+
+B. ALUR ADMIN DASHBOARD
+═══════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────┐
+  │ Admin Dashboard (Halaman Pertama)    │
+  └────────────┬─────────────────────────┘
+               │
+    ┌──────────┴──────────┬──────────────────┐
+    │                     │                  │
+    ↓                     ↓                  ↓
+  Load monitoring     Load pengajuan    Load daftar_akun
+  _pln data           _dokumentasi      _unit
+  │                     │                  │
+  ├─ COUNT(*)          ├─ COUNT(*)        └─ COUNT(*)
+  ├─ SUM(likes)        └─ GROUP BY status
+  ├─ SUM(views)           (pending/approved
+  ├─ GROUP BY pic_unit     /done/rejected)
+  └─ GROUP BY bulan
+  
+  Display Metrics:
+  • Total Posts, Total Likes, Total Views
+  • Pengajuan Count, Unit Aktif Count
+  
+  Display Charts:
+  • Area Chart: Tren Publikasi (Bulanan)
+  • Bar Chart: Top 5 Unit Kerja
+  • Progress: Status Dokumentasi (Done/Approved/Pending %)
+  
+  Display Tabs:
+  • Top Akun Sosmed
+  • Pengajuan Terbaru (10 terakhir)
+  • Rekap Biaya Unit
+
+
+C. ALUR SCRAPING INSTAGRAM
+═══════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────┐
+  │ Admin → Sinkronisasi Data       │
+  └────────┬────────────────────────┘
+           │
+           ↓
+  ┌──────────────────────────────────────┐
+  │ Pilih Mode:                          │
+  │ • Semua Akun Terdaftar              │
+  │ • Pilih Akun Unit Spesifik          │
+  │ • Input Manual Username Influencer   │
+  └────────┬───────────────────────────┘
+           │
+           ├─ [Optional] Set Filter:
+           │  - Bulan target
+           │  - Limit post (default 10)
+           │  - Date range (custom atau semua waktu)
+           │
+           ↓
+  ┌──────────────────────────────────────┐
+  │ Click: 🚀 MULAI PROSES SINKRONISASI │
+  └────────┬───────────────────────────┘
+           │
+           ├─→ For each username dalam to_process:
+           │   │
+           │   ├─ Cache check: apakah data sudah ada di cache (TTL 1 jam)?
+           │   │  └─ YES → Return cached data, skip scrape
+           │   │  └─ NO → Lanjut ke step berikutnya
+           │   │
+           │   ├─ Rate Limit check:
+           │   │  └─ Check jika username udah rate limited
+           │   │  └─ Jika ya, tunggu sampai timeout selesai
+           │   │
+           │   ├─ Initialize Instaloader:
+           │   │  └─ L = instaloader.Instaloader()
+           │   │  └─ Set user agent (rotate untuk setiap request)
+           │   │
+           │   ├─ Try/Except Loop (max_retries=2):
+           │   │  └─ Attempt 0,1,2:
+           │   │     ├─ Profile.from_username(L.context, clean_username)
+           │   │     ├─ If "not found" error → Return empty DataFrame, Show error
+           │   │     ├─ If rate limit error (401, 429, Please wait):
+           │   │     │  ├─ Mark user as rate limited (timeout 15 menit)
+           │   │     │  └─ Exponential backoff: sleep 10s, 20s, etc
+           │   │     │  └─ Retry jika masih ada attempt tersisa
+           │   │     └─ If other error → Return empty, Show error
+           │   │
+           │   ├─ Loop through Profile Posts (maximum: limit setting):
+           │   │  └─ For each post:
+           │   │     ├─ Filter by month jika target_month != "Semua"
+           │   │     ├─ Filter by date range jika ada setting
+           │   │     ├─ Extract: date, caption, shortcode, likes, views, comments
+           │   │     ├─ Build record dict:
+           │   │     │  ├─ tanggal: DD/MM/YYYY
+           │   │     │  ├─ bulan: Nama bulan (Januari-Desember)
+           │   │     │  ├─ tahun: YYYY
+           │   │     │  ├─ judul_pemberitaan: cleaned caption (max 500 char)
+           │   │     │  ├─ link_pemberitaan: https://instagram.com/p/{shortcode}/
+           │   │     │  ├─ platform: "Instagram"
+           │   │     │  ├─ tipe_konten: "Reels" or "Feeds"
+           │   │     │  ├─ pic_unit: unit_name param
+           │   │     │  ├─ akun: @{clean_username}
+           │   │     │  ├─ kategori: kategori_input
+           │   │     │  ├─ likes, comments, views: integer counts
+           │   │     │  ├─ last_updated: NOW()
+           │   │     │  └─ source: "Scraping"
+           │   │     │
+           │   │     ├─ Append ke results list
+           │   │     ├─ Adaptive delay:
+           │   │     │  ├─ Base delay: 2 seconds
+           │   │     │  └─ Every 5 posts: extra delay (random 1-3s)
+           │   │     │
+           │   │     └─ Count++
+           │   │
+           │   ├─ Convert results ke Pandas DataFrame
+           │   │
+           │   ├─ Cache hasil dengan key: {username}_{unit}_{limit}_{month}
+           │   │
+           │   └─ For each row dalam DataFrame:
+           │      │
+           │      ├─ Check: Apakah link_pemberitaan sudah ada di monitoring_pln?
+           │      │  └─ YES → UPDATE record (likes, comments, views, last_updated, dll)
+           │      │  └─ NO → INSERT record baru
+           │      │
+           │      └─ Process next
+           │
+           ↓
+  ┌──────────────────────────────────────┐
+  │ Sinkronisasi Selesai                 │
+  │ Show: Inserted=X, Updated=Y          │
+  │ Progress: 100%                       │
+  └──────────────────────────────────────┘
+
+
+D. ALUR PENGAJUAN DOKUMENTASI (USER SIDE)
+═══════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────┐
+  │ User → Pengajuan Dokumentasi         │
+  └────────┬─────────────────────────────┘
+           │
+           ↓
+  ┌──────────────────────────────────────┐
+  │ Fill Form:                           │
+  │ • Nama Pengaju                       │
+  │ • No Telpon (WhatsApp)               │
+  │ • Tanggal Acara                      │
+  │ • Jam Mulai - Selesai                │
+  │ • Output Type (Foto/Video/Both)      │
+  │ • Biaya (optional)                   │
+  │ • Catatan Khusus                     │
+  └────────┬─────────────────────────────┘
+           │
+           ↓
+  ┌────────────────────────────────────────────────┐
+  │ Click: "Ajukan Sekarang"                       │
+  │ INSERT INTO pengajuan_dokumentasi:             │
+  │  (nama_pengaju, user_id, nomor_telpon, unit,  │
+  │   tanggal_acara, jam_mulai, jam_selesai,     │
+  │   output_link_drive, output_type, biaya,      │
+  │   status='pending', created_at, updated_at)   │
+  └────────┬─────────────────────────────────────┘
+           │
+           ↓
+  ┌────────────────────────────────────────────────┐
+  │ INSERT ke dokumentasi_calendar:                │
+  │  (pengajuan_id, tanggal, nama_kegiatan,       │
+  │   unit, status='pending', created_at)         │
+  └────────┬─────────────────────────────────────┘
+           │
+           ↓
+  ┌────────────────────────────────────────────────┐
+  │ Show: "✅ Pengajuan Terkirim Ke Admin!"        │
+  │ Navigate to: Riwayat Dokumentasi              │
+  └──────────────────────────────────────────────┘
+
+
+E. ALUR APPROVAL DOKUMENTASI (ADMIN SIDE)
+═══════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────┐
+  │ Admin → Pusat Kendali Dokumentasi    │
+  └────────┬─────────────────────────────┘
+           │
+           ↓
+  ┌──────────────────────────────────────┐
+  │ View Pengajuan Cards (Status Filter)  │
+  │ Default: Semua Status                │
+  │ Sortir: Desc by ID (Terbaru dulu)    │
+  └────────┬─────────────────────────────┘
+           │
+           ├─→ Setiap Card menampilkan:
+           │   ├─ ID, Nama Pengaju, Unit, Status Badge
+           │   ├─ Info Dasar: Nama, WhatsApp, Unit, Biaya
+           │   ├─ Jadwal: Tgl, Waktu, Deadline
+           │   ├─ Form Input Hasil (jika approved/done):
+           │   │  ├─ Link Drive
+           │   │  ├─ Link Video
+           │   │  └─ Link Flyer
+           │   │
+           │   └─ Action Buttons:
+           │      ├─ IF status='pending':
+           │      │  ├─ ✅ SETUJUI (→ approved)
+           │      │  └─ ❌ TOLAK (→ rejected + reason)
+           │      ├─ IF status='approved':
+           │      │  └─ 🏁 SELESAIKAN (→ done)
+           │      └─ Always: 🗑️ HAPUS
+           │
+           └─→ Admin Actions:
+
+      SETUJUI PENGAJUAN:
+      └─ UPDATE pengajuan_dokumentasi SET status='approved'
+         WHERE id=?
+      └─ UPDATE dokumentasi_calendar SET status='approved'
+         WHERE pengajuan_id=?
+
+      TOLAK PENGAJUAN:
+      └─ Show Modal: "Alasan Penolakan?"
+      └─ UPDATE pengajuan_dokumentasi 
+         SET status='rejected', rejection_reason=?
+         WHERE id=?
+
+      INPUT LINK HASIL (approved/done):
+      └─ UPDATE pengajuan_dokumentasi 
+         SET hasil_link_drive=?, hasil_video=?, hasil_flyer=?
+         WHERE id=?
+      └─ NOTIFICATION ke User: "✅ Hasil dokumentasi tersedia!"
+
+      SELESAIKAN (approved → done):
+      └─ UPDATE pengajuan_dokumentasi SET status='done'
+         WHERE id=?
+      └─ UPDATE dokumentasi_calendar SET status='done'
+         WHERE pengajuan_id=?
+
+
+G. ALUR INPUT MANUAL MONITORING (ADMIN / USER)
+═══════════════════════════════════════════════════════════════════
+
+  ┌────────────────────────────┐
+  │ Input Manual Page / Form   │
+  └────────┬───────────────────┘
+           │
+           ↓
+  ┌───────────────────────────────────────────────────────────┐
+  │ Fill Form (see Guide > Input Manual):                      │
+  │ • tanggal, platform, caption, link (optional), unit, akun  │
+  │ • likes/comments/views (optional)                          │
+  └────────┬──────────────────────────────────────────────────┘
+           │
+           ├─ VALIDASI:
+           │  ├─ unit & akun required
+           │  ├─ jika link diberikan → cek apakah sudah ada di monitoring_pln (ux_monitoring_link)
+           │  │   └─ Conflict handling: append suffix / auto-generate alternative link OR reject with message
+           │  └─ semua field format validated
+           │
+           ├─ DB ACTIONS (on success):
+           │  ├─ INSERT INTO monitoring_pln (
+           │  │    tanggal, bulan, tahun, judul_pemberitaan, link_pemberitaan,
+           │  │    platform, tipe_konten, pic_unit, akun, kategori,
+           │  │    likes, comments, views, source='Input Manual', source_details, created_by, last_updated)
+           │  ├─ CREATE input_manual_log (user_id=current_user, monitoring_id=inserted_id, tanggal_input=NOW(), sumber_detail='manual form', notes)
+           │  └─ Show success: "✅ Data berhasil disimpan (Input Manual)"
+           │
+           └─ POST ACTIONS:
+              ├─ Option: "Tambah ke Kalender" → INSERT INTO dokumentasi_calendar (pengajuan_id=NULL, created_by=current_user, tanggal, nama_kegiatan, unit, status='pending')
+              └─ Record muncul di Rekap & Dashboard (kpi updated)
+
+
+H. ALUR ADMIN MENAMBAH EVENT DI KALENDER (AD-HOC)
+══════════════════════════════════════════════════════════
+
+  ┌────────────────────────────┐
+  │ Calendar Page (Admin view) │
+  └────────┬───────────────────┘
+           │
+           ↓
+  ┌───────────────────────────────────────────────────────────┐
+  │ Click: "Tambah Event"                                        │
+  │ Fill: tanggal, nama_kegiatan, unit, (optional) pengajuan_id     │
+  └────────┬──────────────────────────────────────────────────┘
+           │
+           ├─ DB ACTIONS (on submit):
+           │  ├─ If pengajuan_id provided:
+           │  │   └─ UPDATE pengajuan_dokumentasi SET added_to_calendar=1 WHERE id=?
+           │  ├─ INSERT INTO dokumentasi_calendar (pengajuan_id (nullable), created_by=current_user, tanggal, nama_kegiatan, unit, status='pending', created_at=NOW())
+           │  └─ Notify responsible unit / show toast
+           │
+           └─ Calendar refresh → event badge / hover shows details
+
+
+F. ALUR KALENDER DOKUMENTASI (VISUALISASI)
+═══════════════════════════════════════════════════════════════════
+
+  ┌────────────────────────────┐
+  │ Kalender Dokumentasi Page  │
+  └────────┬───────────────────┘
+           │
+           ↓
+  ┌────────────────────────────────────────────────┐
+  │ SELECT: Tahun & Bulan (Picker Controls)        │
+  └────────┬───────────────────────────────────────┘
+           │
+           ↓
+  ┌────────────────────────────────────────────────┐
+  │ Query dokumentasi_calendar:                    │
+  │  SELECT * FROM dokumentasi_calendar           │
+  │  WHERE SUBSTR(tanggal, 7,4) = ? AND           │
+  │        SUBSTR(tanggal, 4,2) = ?               │
+  │  (Filter by selected year & month)            │
+  └────────┬───────────────────────────────────────┘
+           │
+           ↓
+  ┌────────────────────────────────────────────────┐
+  │ Build Calendar Grid:                           │
+  │  - python.calendar.Calendar object            │
+  │  - Weeks list per month                       │
+  │  - Create events_map: {day: [list of events]} │
+  └────────┬───────────────────────────────────────┘
+           │
+           ↓
+  ┌────────────────────────────────────────────────┐
+  │ Render HTML Table:                             │
+  │  <table class="mini-cal">                      │
+  │  • Header: Sun-Sat                             │
+  │  • Each cell:                                  │
+  │    ├─ Day number                              │
+  │    ├─ Event badges (max 2, +X more)           │
+  │    ├─ Color by status:                        │
+  │    │  ├─ pending: 🟠 orange                   │
+  │    │  ├─ approved: 🟢 green                   │
+  │    │  └─ done: 🔵 blue                        │
+  │    └─ Hover: Show full event name             │
+  └────────────────────────────────────────────────┘
+
+
+================================================================================
+4. PENJELASAN SETIAP FUNGSI & LIBRARY
+================================================================================
+
+A. LIBRARY IMPORTS & FUNGSI
+═════════════════════════════════════════════════════════════════
+
+📦 STREAMLIT (User Interface Framework)
+────────────────────────────────────────
+• st.set_page_config(): Config halaman (title, layout, icon)
+• st.markdown(): Render HTML & CSS custom styling
+• st.session_state: Browser-side state management (persist antar rerun)
+• st.columns(): Buat layout grid columns
+• st.tabs(): Buat tab interface
+• st.form(): Form submission (semua input dlm form di-submit sekaligus)
+• st.text_input(), st.text_area(), st.number_input(): Input fields
+• st.selectbox(), st.multiselect(): Dropdown selection
+• st.date_input(): Date picker
+• st.button(), st.form_submit_button(): Action buttons
+• st.dataframe(), st.data_editor(): Display & edit tabular data
+• st.chart() (area_chart, bar_chart): Data visualization
+• st.download_button(): File download link
+• st.metric(): Display KPI metrics
+• st.progress(): Progress bar
+• st.success(), st.error(), st.warning(), st.info(): Messages
+• st.rerun(): Refresh halaman (trigger re-execution)
+• st.balloons(), st.toast(): Notifications & celebrate
+• st.container(), st.expander(): Layout containers
+• st.stop(): Halt execution
+
+📦 PANDAS (Data Manipulation)
+──────────────────────────────
+• pd.read_sql(): Query database & return DataFrame
+• pd.DataFrame(): Create table from dict/list
+• pd.to_datetime(): Parse date strings
+• pd.Series.value_counts(): Count occurrences
+• df.pivot_table(): Cross-tab aggregation
+• df.groupby(): Group by columns & aggregate
+• df.sort_values(): Sort DataFrame
+• df.drop(): Remove columns/rows
+• df.fillna(): Fill missing values
+• df.head(), df.tail(): First/last N rows
+• df.to_excel(): Write to Excel (via xlsxwriter)
+• df.to_dict(): Convert DataFrame to dict
+
+📦 SQLALCHEMY & SQLITE3 (Database)
+────────────────────────────────────
+Database Initialization:
+├─ create_engine(): Create DB connection engine
+├─ engine.begin(): Context manager untuk transactions
+├─ text(): Execute raw SQL with parameters
+└─ .fetchone(), .fetchall(): Retrieve query results
+
+Database Operations:
+├─ CREATE TABLE IF NOT EXISTS: Define schema
+├─ INSERT INTO: Add new records
+├─ UPDATE: Modify existing records
+├─ DELETE: Remove records
+├─ SELECT: Query data
+└─ UNIQUE INDEX: Prevent duplicate entries
+
+Special Features:
+├─ ON CONFLICT (SQLite3):
+│  └─ INSERT ... ON CONFLICT(column) DO UPDATE: Upsert logic
+├─ PRAGMA journal_mode=WAL: Write-Ahead Logging (better concurrency)
+├─ PRAGMA busy_timeout: Timeout untuk lock conflicts
+└─ sqlite3.connect(): Direct connection with timeout
+
+📦 INSTALOADER (Instagram Scraping)
+────────────────────────────────────
+• instaloader.Instaloader(): Initialize scraper
+• L.context.user_agent: Set user agent (rotate untuk avoid ban)
+• Profile.from_username(context, username): Load profile
+• Profile.get_posts(): Iterate through posts
+• Post attributes:
+  ├─ post.date: Publication datetime
+  ├─ post.caption: Caption text
+  ├─ post.shortcode: Post URL shortcode
+  ├─ post.likes: Like count
+  ├─ post.comments: Comment count
+  ├─ post.is_video: Boolean (video or image)
+  ├─ post.video_view_count: Video view count
+  └─ post.get_likes(), post.get_comments(): Detailed engagement
+
+Rate Limiting Handling:
+├─ Exception handling untuk 401 Unauthorized
+├─ Exception handling untuk 429 Too Many Requests
+└─ Exponential backoff: Wait time = 10s × 2^attempt
+
+📦 XLSXWRITER (Excel Report Generation)
+─────────────────────────────────────────
+• ExcelWriter: Writer object untuk workbook
+• workbook.add_format(): Create cell format style
+• worksheet.write(): Write cell value with format
+• worksheet.set_column(): Set column width
+• Format attributes:
+  ├─ bold, font_color, bg_color: Text styling
+  ├─ border, align, valign: Cell alignment
+  └─ number_format: Currency/percentage formatting
+
+📦 NUMPY (Numerical Computing)
+────────────────────────────────
+• np.random.uniform(a, b): Random float dalam range [a, b]
+└─ Used untuk jitter dalam rate limiting (prevent predictable patterns)
+
+📦 HASHLIB (Password Hashing)
+──────────────────────────────
+• hashlib.sha256(string): Hash password dengan SHA256
+• .hexdigest(): Return hex string dari hash
+└─ Example: hashlib.sha256('admin123'.encode()).hexdigest()
+
+📦 DATETIME (Time Management)
+──────────────────────────────
+• datetime.now(): Current date & time
+• datetime.timedelta(): Time delta (digunakan untuk TTL cache, rate limit waits)
+• date.strftime(): Format date string (e.g., "%d/%m/%Y")
+└─ Used untuk timestamps dan schedule handling
+
+📦 OS & RE (File System & Regex)
+────────────────────────────────
+• os.path.abspath(): Get absolute file path
+• os.path.exists(): Check file existence
+• re.sub(): Regular expression substitution
+└─ clean_txt() menggunakan re.sub(r'[^\x00-\x7f]', '', text) untuk remove non-ASCII
+
+
+B. CUSTOM CLASSES & FUNCTIONS
+═════════════════════════════════════════════════════════════════
+
+CLASS: ScrapingCache
+┌─────────────────────────────────────────┐
+│ Purpose: Simple in-memory cache dengan  │
+│ TTL (Time To Live)                      │
+├─────────────────────────────────────────┤
+│ Attributes:                             │
+│ • cache: dict = {key: (value, ts)}     │
+│ • ttl: timedelta object                 │
+│                                         │
+│ Methods:                                │
+│ • get(key) → value or None             │
+│   └─ Return cached value if not expired│
+│   └─ Delete if expired, return None    │
+│                                         │
+│ • set(key, value)                      │
+│   └─ Store value dengan timestamp      │
+│                                         │
+│ • clear_expired()                      │
+│   └─ Remove semua expired entries      │
+│                                         │
+│ Usage:                                  │
+│ scraping_cache = ScrapingCache(60)     │
+│ cached = scraping_cache.get(key)       │
+│ if cached: return cached               │
+│ # ... fetch baru ...                   │
+│ scraping_cache.set(key, new_data)      │
+└─────────────────────────────────────────┘
+
+CLASS: InstagramRateLimitManager
+┌─────────────────────────────────────────┐
+│ Purpose: Manage Instagram rate limits   │
+│ dengan exponential backoff               │
+├─────────────────────────────────────────┤
+│ Attributes:                             │
+│ • last_request_time: dict (username→ts)│
+│ • rate_limit_wait_until: dict           │
+│ • min_delay_between_requests: 3 seconds │
+│ • user_agent_list: List user agents     │
+│ • ua_index: Current user agent index    │
+│ • request_count: Total requests made    │
+│                                         │
+│ Methods:                                │
+│ • get_next_user_agent()                │
+│   └─ Rotate ke user agent berikutnya   │
+│                                         │
+│ • wait_if_needed(username)              │
+│   └─ Check rate limit & enforce delay  │
+│   └─ Update last_request_time          │
+│                                         │
+│ • mark_rate_limited(username, timeout) │
+│   └─ Mark user sebagai rate limited    │
+│   └─ Set wait_until ke now + timeout   │
+│                                         │
+│ • should_slow_down()                   │
+│   └─ Every 10 requests, add extra delay│
+│                                         │
+│ Usage:                                  │
+│ rate_limit_manager = InstagramRateLimit│
+│ Manager()                               │
+│ rate_limit_manager.wait_if_needed(user)│
+│ # ... scrape ...                        │
+│ if rate_limited: mark_rate_limited()   │
+└─────────────────────────────────────────┘
+
+FUNCTION: init_auth_db()
+├─ Purpose: Initialize users table & create default admin
+├─ Schema:
+│  ├─ id [INTEGER PRIMARY KEY AUTOINCREMENT]
+│  ├─ username [TEXT UNIQUE NOT NULL]
+│  ├─ password [TEXT NOT NULL] - SHA256 hash
+│  ├─ role [TEXT DEFAULT 'user']
+│  ├─ unit [TEXT]
+│  └─ created_at [TEXT]
+├─ Default Admin:
+│  ├─ username: 'admin'
+│  ├─ password: SHA256('admin123')
+│  ├─ role: 'admin'
+│  ├─ unit: 'ADMIN'
+│  └─ created_at: NOW()
+└─ Try/Except: Jika admin sudah ada, skip insertion
+
+FUNCTION: login_user(username, password)
+├─ Input: username (string), password (string)
+├─ Process:
+│  ├─ Hash password dengan SHA256
+│  ├─ Query: SELECT id, username, role, unit FROM users
+│  │         WHERE username=? AND password=?
+│  └─ Return dict atau None
+├─ Return: {"id": int, "username": str, "role": str, "unit": str} atau None
+└─ Error handling: Exception → return None
+
+FUNCTION: verify_password(password)
+├─ Input: plain text password
+├─ Process: hashlib.sha256(password.encode()).hexdigest()
+├─ Output: 64-char hex string (SHA256 hash)
+└─ Note: Sama dengan login proses, tapi untuk new password
+
+FUNCTION: register_user(username, password, role='user', unit='')
+├─ Input: username, password, role, unit
+├─ Validation:
+│  ├─ Check username uniqueness (UNIQUE constraint)
+│  └─ Password already hashed sebelum INSERT
+├─ SQL: INSERT INTO users (username, password, role, unit, created_at)
+└─ Return: True if success, False if username exists or error
+
+FUNCTION: init_db()
+├─ Purpose: Create schema & migration untuk backward compatibility
+├─ Tables Created:
+│  ├─ users (sebelumnya init_auth_db)
+│  ├─ daftar_akun_unit
+│  ├─ monitoring_pln
+│  ├─ pengajuan_dokumentasi
+│  └─ dokumentasi_calendar
+├─ Indices:
+│  └─ CREATE UNIQUE INDEX ux_monitoring_link ON monitoring_pln(link_pemberitaan)
+├─ Migrations (ensure_columns):
+│  └─ ALTER TABLE ... ADD COLUMN (jika kolom belum ada)
+│     └─ Used untuk compatibility dengan versi DB lama
+└─ Error handling: Try/Except untuk setiap kolom ADD (prevent duplicate column errors)
+
+FUNCTION: run_scraper(username, unit_name, limit=20, target_month="Semua", kategori_input="Korporat", date_from=None, date_to=None, max_retries=2)
+├─ Input: Instagram username, unit name, filtering options
+├─ Process:
+│  ├─ 1. Clean username dengan extract_username()
+│  ├─ 2. Check cache: jika ada & belum expired, return cached
+│  ├─ 3. Rate limit check: wait jika needed
+│  ├─ 4. Initialize Instaloader
+│  ├─ 5. Try to fetch profile (dengan retry & exponential backoff)
+│  ├─ 6. Loop through posts:
+│  │    ├─ Filter by month, date range
+│  │    ├─ Extract: date, caption, shortcode, likes, views
+│  │    ├─ Build dict record
+│  │    ├─ Append ke results
+│  │    ├─ Adaptive delay: 2s base + 1-3s extra every 5 posts
+│  │    └─ Handle rate limits per post
+│  ├─ 7. Convert results ke DataFrame
+│  ├─ 8. Cache hasil
+│  └─ 9. Return DataFrame
+├─ Output: pandas.DataFrame dengan columns:
+│  ├─ tanggal, bulan, tahun
+│  ├─ judul_pemberitaan, link_pemberitaan
+│  ├─ platform, tipe_konten
+│  ├─ pic_unit, akun, kategori
+│  ├─ likes, comments, views
+│  ├─ last_updated, source
+│  └─ empty DataFrame jika error
+└─ Error handling:
+   ├─ "not found" → show error, return empty
+   ├─ Rate limit → mark rate limited, retry with backoff
+   └─ Other errors → show error, return empty
+
+FUNCTION: clean_txt(text_input)
+├─ Input: Any text string
+├─ Process:
+│  ├─ Return "Konten Visual" jika input kosong
+│  ├─ Remove non-ASCII characters dengan regex
+│  ├─ Replace newlines dengan space
+│  └─ Strip whitespace
+├─ Output: Cleaned text string
+└─ Usage: Untuk sanitize captions sebelum simpan ke DB
+
+FUNCTION: extract_username(input_str)
+├─ Input: Username, @username, atau full IG post URL
+├─ Process: (regex parsing)
+│  ├─ Jika input kosong → return ""
+│  ├─ Jika contains "/p/" → return as full URL (untuk post scraping)
+│  ├─ Jika contains "instagram.com" → extract username dari path
+│  └─ Else → remove @ dan strip whitespace
+├─ Output: Clean username atau full URL
+└─ Example:
+   ├─ Input: "pln_uid" → Output: "pln_uid"
+   ├─ Input: "@pln_uid" → Output: "pln_uid"
+   └─ Input: "https://instagram.com/pln_uid/" → Output: "pln_uid"
+
+FUNCTION: get_month_order()
+├─ Output: List of 12 Indonesian month names
+└─ Return: ['Januari', 'Februari', ..., 'Desember']
+
+FUNCTION: parse_date_str(datestr)
+├─ Input: Date string dalam berbagai format
+├─ Supported formats:
+│  ├─ "DD/MM/YYYY" (most common dalam sistem)
+│  ├─ "YYYY-MM-DD"
+│  ├─ "YYYY-MM-DD HH:MM:SS"
+│  ├─ "DD-MM-YYYY"
+│  └─ Fallback: pandas.to_datetime() dengan dayfirst=True
+├─ Output: datetime.date object atau None
+└─ Usage: Untuk parse berbagai date formats dalam data
+
+FUNCTION: render_month_calendar(year, month, events=None)
+├─ Input: year, month (integer), events (list of dicts)
+├─ Process:
+│  ├─ Build calendar grid dengan python.calendar
+│  ├─ Create events_map: {day: [list of events for that day]}
+│  ├─ Generate HTML table dengan:
+│  │  ├─ Header row: day names (Ming-Sab)
+│  │  ├─ Data rows: 7 columns (days)
+│  │  ├─ Empty cells untuk hari dari bulan lain
+│  │  ├─ Event badges (max 2, +X more untuk excess)
+│  │  └─ Color coding by status:
+│  │     ├─ pending: 🟠 orange
+│  │     ├─ approved: 🟢 green
+│  │     └─ done: 🔵 blue
+│  └─ Include CSS styling untuk responsive table
+├─ Output: HTML string (untuk st.markdown())
+└─ Usage: Visualisasi jadwal dokumentasi dalam kalender
+
+FUNCTION: apply_date_filter(df)
+├─ Input: DataFrame dengan column 'tanggal' (DD/MM/YYYY)
+├─ Process:
+│  ├─ Check session_state['use_date_filter']
+│  ├─ Parse 'tanggal' column ke datetime
+│  ├─ Get date_from & date_to dari session_state
+│  ├─ Filter: df['tanggal_parsed'] >= from AND <= to
+│  └─ Drop temporary 'tanggal_parsed' column
+├─ Output: Filtered DataFrame
+└─ Usage: Global date filtering di Rekapitulasi page
+
+FUNCTION: generate_excel_report(df)
+├─ Input: DataFrame dengan data monitoring
+├─ Process:
+│  ├─ Create BytesIO buffer
+│  ├─ Initialize ExcelWriter dengan xlsxwriter engine
+│  ├─ Sheet 1: "Data_Detail"
+│  │  ├─ Write all rows & columns
+│  │  ├─ Format header (bold, white, blue background)
+│  │  └─ Auto-adjust column width
+│  │
+│  ├─ Sheet 2: "Rekapan Tahunan"
+│  │  ├─ For each unique year (sorted descending):
+│  │  │  ├─ Create pivot table: index=pic_unit, columns=bulan, values=count
+│  │  │  ├─ Fill missing months dengan 0
+│  │  │  ├─ Sort months by calendar order
+│  │  │  └─ Write to worksheet dengan formatting
+│  │  └─ Set column widths
+│  │
+│  └─ Return: output.getvalue() (binary Excel file)
+├─ Usage: Download button di Rekapitulasi & Admin Dashboard
+
+FUNCTION: color_rekap_style(val)
+├─ Input: Numeric value (count)
+├─ Output: CSS background-color string based on value:
+│  ├─ >= 20: Dark blue background, white text
+│  ├─ >= 10: Medium blue background, white text
+│  ├─ > 0: Light blue background, dark text
+│  └─ 0: White background, light gray text
+└─ Usage: Style DataFrame cells dalam heatmap visualisasi
+
+FUNCTION: get_nav_for_role(role)
+├─ Input: role ('admin' atau 'user')
+├─ Output: List of navigation menu items
+│  ├─ Admin: Dashboard, Rekapitulasi, Sinkronisasi, Input Manual, 
+│  │         Dokumentasi, Kalender, Pengaturan Unit, User, Admin
+│  └─ User: Dashboard, Kalender, Dokumentasi, Riwayat
+└─ Usage: Build navigation menu di header
+
+FUNCTION: safe_rerun()
+├─ Purpose: Compatibility helper untuk st.rerun()
+├─ Process:
+│  ├─ Try: st.rerun()
+│  ├─ Except (AttributeError): st.experimental_rerun()
+│  └─ Except (Any): st.stop()
+└─ Usage: Handle versi Streamlit lama yang belum punya st.rerun()
+
+FUNCTION: render_documentation_links(drive_link, video_link, flyer_link)
+├─ Input: Three URL strings (bisa None atau empty)
+├─ Output: HTML div dengan button links (styled dengan inline CSS)
+├─ Process:
+│  ├─ Check jika semua kosong → return "Dokumentasi belum tersedia"
+│  ├─ Build HTML div dengan flexbox layout
+│  ├─ Conditional rendering setiap link jika ada
+│  └─ Styling:
+│  │  ├─ Drive: 🔵 Blue (#0ea5e9)
+│  │  ├─ Video: 🟠 Amber (#f59e0b)
+│  │  └─ Flyer: 🟣 Purple (#8b5cf6)
+│  └─ Each link: padding, border-radius, font-weight, hover effect
+├─ Usage: Render documentation links di Riwayat & Kalender page
+└─ Return: HTML string untuk st.markdown()
+
+
+================================================================================
+5. STRUKTUR DATABASE DETAIL
+================================================================================
+
+TABLE: users
+═════════════════════════════════════════════════════════════════
+
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    role TEXT DEFAULT 'user',
+    unit TEXT,
+    created_at TEXT
+);
+
+Columns:
+┌─────────┬────────┬──────────────────────────────────────┐
+│ Name    │ Type   │ Description                          │
+├─────────┼────────┼──────────────────────────────────────┤
+│ id      │ INT    │ Auto-increment primary key           │
+│ username│ TEXT   │ Unique username (email or plain text)│
+│ password│ TEXT   │ SHA256 hashed password (64 char hex) │
+│ role    │ TEXT   │ 'admin' atau 'user'                  │
+│ unit    │ TEXT   │ Department/unit name                 │
+│ created_at│TEXT  │ ISO8601 timestamp (YYYY-MM-DD HH:MM)│
+└─────────┴────────┴──────────────────────────────────────┘
+
+Example Data:
+ID │ username │ password (SHA256) │ role  │ unit    │ created_at
+───┼──────────┼──────────────────┼───────┼─────────┼────────────────────
+1  │ admin    │ 8c6976e5b5410... │ admin │ ADMIN   │ 2026-01-20 08:00:00
+2  │ humas_01 │ 3b64db62e1d73... │ user  │ Humas   │ 2026-01-21 10:30:00
+3  │ ops_02   │ 7c4a8d09ca316... │ user  │ Operasi │ 2026-01-22 14:15:00
+
+
+TABLE: daftar_akun_unit
+═════════════════════════════════════════════════════════════════
+
+CREATE TABLE daftar_akun_unit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nama_unit TEXT,
+    username_ig TEXT UNIQUE
+);
+
+Columns:
+┌────────────┬──────┬────────────────────────────────────┐
+│ Name       │ Type │ Description                        │
+├────────────┼──────┼────────────────────────────────────┤
+│ id         │ INT  │ Auto-increment primary key         │
+│ nama_unit  │ TEXT │ Department/unit name (e.g., Humas) │
+│ username_ig│ TEXT │ Instagram handle (unique, without @)│
+└────────────┴──────┴────────────────────────────────────┘
+
+Example Data:
+ID │ nama_unit  │ username_ig
+───┼────────────┼──────────────────
+1  │ Humas      │ pln_uid_humas
+2  │ Operasi    │ pln_uid_operasi
+3  │ Komersial  │ pln_uid_komersial
+4  │ IT         │ pln_uid_it
+
+
+TABLE: monitoring_pln (MAIN DATA TABLE)
+═════════════════════════════════════════════════════════════════
+
+CREATE TABLE monitoring_pln (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tanggal TEXT, bulan TEXT, tahun TEXT,
+    judul_pemberitaan TEXT, 
+    link_pemberitaan TEXT UNIQUE,
+    platform TEXT, tipe_konten TEXT, 
+    pic_unit TEXT, 
+    akun TEXT,
+    kategori TEXT,
+    likes INTEGER DEFAULT 0, 
+    comments INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    source TEXT DEFAULT 'Scraping',
+    source_details TEXT,
+    created_by INTEGER, -- FK → users.id (nullable, set when manual input)
+    last_updated TEXT
+);
+
+Columns (18 total):
+┌──────────────────┬────────┬───────────────────────────────┐
+│ Name             │ Type   │ Description                   │
+├──────────────────┼────────┼───────────────────────────────┤
+│ id               │ INT    │ PK, auto-increment            │
+│ tanggal          │ TEXT   │ Post date (DD/MM/YYYY format) │
+│ bulan            │ TEXT   │ Month name (Januari-Desember) │
+│ tahun            │ TEXT   │ Year (YYYY)                   │
+│ judul_pemberitaan│ TEXT   │ Caption (max 500 chars)       │
+│ link_pemberitaan │ TEXT   │ Post URL (UNIQUE, prevent dup)│
+│ platform         │ TEXT   │ Instagram, YouTube, Facebook..│
+│ tipe_konten      │ TEXT   │ Feeds, Reels, Stories, etc.   │
+│ pic_unit         │ TEXT   │ Responsible unit              │
+│ akun             │ TEXT   │ Account handle (@username)    │
+│ kategori         │ TEXT   │ Korporat, Influencer, Kampanye│
+│ likes            │ INT    │ Like count (default 0)        │
+│ comments         │ INT    │ Comment count (default 0)     │
+│ views            │ INT    │ View count (default 0)        │
+│ source           │ TEXT   │ Scraping or Input Manual      │
+│ source_details   │ TEXT   │ Optional notes for manual input│
+│ created_by       │ INT    │ FK → users.id (nullable)      │
+│ last_updated     │ TEXT   │ ISO8601 timestamp (update)    │
+└──────────────────┴────────┴───────────────────────────────┘
+
+Indices:
+├─ PRIMARY KEY: id
+└─ UNIQUE INDEX ux_monitoring_link: ON (link_pemberitaan)
+   └─ Prevent duplicate posts
+
+Example Data:
+ID │ tanggal   │ bulan    │ tahun │ judul... │ link... │ platform │ unit
+───┼───────────┼──────────┼───────┼──────────┼─────────┼──────────┼─────
+1  │ 15/01/2026│ Januari  │ 2026  │ "Kegiatan│ https://│ Instagram│ Humas
+   │           │          │       │ PLN..." │ instagram.│          │
+   │           │          │       │         │ com/p/..│          │
+
+
+TABLE: input_manual_log (MANUAL INPUT AUDIT)
+═════════════════════════════════════════════════════════════════
+
+CREATE TABLE input_manual_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,             -- FK → users.id (who input)
+    monitoring_id INTEGER,       -- FK → monitoring_pln.id (nullable)
+    tanggal_input TEXT,          -- timestamp saat input
+    sumber_detail TEXT,          -- deskripsi / cara input (contoh: 'admin form')
+    notes TEXT,
+    created_at TEXT
+);
+
+Purpose:
+├─ Menyimpan jejak (audit) setiap input manual ke monitoring_pln
+├─ Mempermudah Pelacakan sumber input dan alasan perubahan
+└─ Berguna untuk admin audit dan rollback manual jika perlu
+
+Example Data:
+ID │ user_id │ monitoring_id │ tanggal_input       │ sumber_detail
+───┼─────────┼───────────────┼─────────────────────┼──────────────────
+1  │ 1       │ 5             │ 2026-01-31 09:15:00 │ "Input manual via form"
+
+
+TABLE: pengajuan_dokumentasi (REQUEST)
+═════════════════════════════════════════════════════════════════
+
+CREATE TABLE pengajuan_dokumentasi (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nama_pengaju TEXT,
+    user_id INTEGER,
+    nomor_telpon TEXT,
+    unit TEXT,
+    tanggal_acara TEXT,
+    jam_mulai TEXT,
+    jam_selesai TEXT,
+    output_link_drive TEXT,
+    output_type TEXT,
+    biaya REAL DEFAULT 0,
+    deadline_penyelesaian TEXT,
+    status TEXT DEFAULT 'pending',
+    hasil_link_drive TEXT,
+    hasil_video TEXT,
+    hasil_flyer TEXT,
+    rejection_reason TEXT,
+    added_to_calendar INTEGER DEFAULT 0,
+    created_at TEXT,
+    updated_at TEXT,
+    notes TEXT
+);
+
+Columns (20 total):
+┌──────────────────────┬────────┬──────────────────────────┐
+│ Name                 │ Type   │ Description              │
+├──────────────────────┼────────┼──────────────────────────┤
+│ id                   │ INT    │ PK, auto-increment       │
+│ nama_pengaju         │ TEXT   │ Requester name           │
+│ user_id              │ INT    │ FK → users.id            │
+│ nomor_telpon         │ TEXT   │ WhatsApp number          │
+│ unit                 │ TEXT   │ Unit requesting docs     │
+│ tanggal_acara        │ TEXT   │ Event date (DD/MM/YYYY)  │
+│ jam_mulai            │ TEXT   │ Start time (HH:MM)       │
+│ jam_selesai          │ TEXT   │ End time (HH:MM)         │
+│ output_link_drive    │ TEXT   │ Reference drive link     │
+│ output_type          │ TEXT   │ Foto, Video, Both, etc.  │
+│ biaya                │ REAL   │ Cost estimate            │
+│ deadline_penyelesaian│ TEXT   │ Delivery deadline        │
+│ status               │ TEXT   │ pending/approved/done/...│
+│ hasil_link_drive     │ TEXT   │ Final drive link (output)│
+│ hasil_video          │ TEXT   │ Final video link         │
+│ hasil_flyer          │ TEXT   │ Final flyer/poster link  │
+│ rejection_reason     │ TEXT   │ Why rejected (if status) │
+│ added_to_calendar    │ INT    │ Boolean (0/1)            │
+│ created_at           │ TEXT   │ Creation timestamp       │
+│ updated_at           │ TEXT   │ Last update timestamp    │
+│ notes                │ TEXT   │ Special instructions     │
+└──────────────────────┴────────┴──────────────────────────┘
+
+Status Values:
+├─ pending: Menunggu review admin
+├─ approved: Admin setuju, dokumentasi dimulai
+├─ done: Dokumentasi selesai, hasil sudah tersedia
+└─ rejected: Admin tolak dengan alasan
+
+Example Data:
+ID │ nama_pengaju │ user_id │ unit │ status    │ hasil_link_drive
+───┼──────────────┼─────────┼──────┼───────────┼──────────────────
+1  │ Budi Santoso │ 2       │ Humas│ done      │ https://drive...
+2  │ Rina Wijaya  │ 3       │ Ops  │ approved  │ NULL
+
+
+TABLE: dokumentasi_calendar (SCHEDULING)
+═════════════════════════════════════════════════════════════════
+
+CREATE TABLE dokumentasi_calendar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pengajuan_id INTEGER, -- FK → pengajuan_dokumentasi.id (nullable when ad-hoc event)
+    created_by INTEGER,   -- FK → users.id (who created this event, optional)
+    tanggal TEXT,
+    nama_kegiatan TEXT,
+    unit TEXT,
+    status TEXT,
+    doc_link TEXT,
+    created_at TEXT
+);
+
+Columns (9 total):
+┌─────────────┬────────┬────────────────────────────────────────────┐
+│ Name        │ Type   │ Description                                │
+├─────────────┼────────┼────────────────────────────────────────────┤
+│ id          │ INT    │ PK, auto-increment                         │
+│ pengajuan_id│ INT    │ FK → pengajuan_dokumentasi.id (nullable)   │
+│ created_by  │ INT    │ FK → users.id (nullable, creator of event) │
+│ tanggal     │ TEXT   │ Event date (DD/MM/YYYY)                    │
+│ nama_kegiatan│TEXT   │ Activity name                              │
+│ unit        │ TEXT   │ Responsible unit                           │
+│ status      │ TEXT   │ pending/approved/done                      │
+│ doc_link    │ TEXT   │ Final documentation link                   │
+│ created_at  │ TEXT   │ Creation timestamp                         │
+└─────────────┴────────┴────────────────────────────────────────────┘
+
+Purpose:
+├─ Can map 1-to-1 dengan pengajuan_dokumentasi jika event berasal dari pengajuan
+├─ Also supports ad-hoc events created directly by admin (created_by != NULL, pengajuan_id NULL)
+├─ Used for calendar visualization
+└─ Track status changes sesuai approval flow
+
+Example Data:
+ID │ pengajuan_id │ tanggal    │ nama_kegiatan     │ status
+───┼──────────────┼────────────┼───────────────────┼─────────
+1  │ 1            │ 15/01/2026 │ Rapat Direksi     │ done
+2  │ 2            │ 20/01/2026 │ Sosialisasi PLTS  │ approved
+
+
+================================================================================
+6. OPERASI DATABASE (CRUD, RESET, MIGRASI)
+================================================================================
+
+A. CREATE (INSERT) OPERATIONS
+═════════════════════════════════════════════════════════════════
+
+INSERT: Tambah Data Monitoring Baru (via Scraping)
+──────────────────────────────────────────────────
+
+INSERT INTO monitoring_pln (
+    tanggal, bulan, tahun, judul_pemberitaan, link_pemberitaan,
+    platform, tipe_konten, pic_unit, akun, kategori,
+    likes, comments, views, source, last_updated
+)
+VALUES (
+    '15/01/2026', 'Januari', '2026', 'Caption dari post', 'https://...',
+    'Instagram', 'Feeds', 'Humas', '@pln_uid_humas', 'Korporat',
+    150, 25, 5000, 'Scraping', '2026-01-31 14:30:00'
+);
+
+Alternative (ON CONFLICT untuk Upsert):
+────────────────────────────────────────
+
+INSERT INTO monitoring_pln (...)
+VALUES (...)
+ON CONFLICT(link_pemberitaan) DO UPDATE SET
+    likes=excluded.likes,
+    comments=excluded.comments,
+    views=excluded.views,
+    last_updated=excluded.last_updated;
+
+INSERT: Tambah Pengajuan Dokumentasi (via User Form)
+────────────────────────────────────────────────────
+
+INSERT INTO pengajuan_dokumentasi (
+    nama_pengaju, user_id, nomor_telpon, unit,
+    tanggal_acara, jam_mulai, jam_selesai,
+    output_link_drive, output_type, biaya,
+    status, created_at, updated_at, notes
+)
+VALUES (
+    'Budi Santoso', 2, '082123456789', 'Humas',
+    '15/01/2026', '08:00', '10:00',
+    'https://drive.example/ref', 'Foto & Video', 500000,
+    'pending', '2026-01-31 10:00:00', '2026-01-31 10:00:00',
+    'Dokumentasi rapat direksi'
+);
+
+INSERT: Tambah Event Kalender (via Pengajuan)
+─────────────────────────────────────────────
+
+INSERT INTO dokumentasi_calendar (
+    pengajuan_id, tanggal, nama_kegiatan, unit, status, created_at
+)
+VALUES (
+    1, '15/01/2026', 'Rapat Direksi', 'Humas', 'pending', '2026-01-31 10:00:00'
+);
+
+INSERT: Registrasi User Baru
+──────────────────────────────
+
+INSERT INTO users (username, password, role, unit, created_at)
+VALUES (
+    'user_baru', '...(SHA256 hash)...', 'user', 'Komersial', '2026-01-31 12:00:00'
+);
+
+
+B. READ (SELECT) OPERATIONS
+═════════════════════════════════════════════════════════════════
+
+SELECT: All monitoring data
+──────────────────────────
+
+SELECT * FROM monitoring_pln
+WHERE tahun = '2026'
+ORDER BY tanggal DESC
+LIMIT 100;
+
+SELECT: Filtered monitoring dengan aggregation
+──────────────────────────────────────────────
+
+SELECT pic_unit, bulan, COUNT(*) as jumlah_post, 
+       SUM(likes) as total_likes, SUM(views) as total_views
+FROM monitoring_pln
+WHERE tahun = '2026'
+GROUP BY pic_unit, bulan
+ORDER BY pic_unit, bulan;
+
+SELECT: Top accounts by engagement
+───────────────────────────────────
+
+SELECT akun, pic_unit, 
+       COUNT(*) as post_count,
+       SUM(likes) as total_likes,
+       AVG(views) as avg_views
+FROM monitoring_pln
+GROUP BY akun, pic_unit
+ORDER BY total_likes DESC
+LIMIT 10;
+
+SELECT: Pengajuan dengan filter
+────────────────────────────────
+
+SELECT id, nama_pengaju, unit, tanggal_acara, status, biaya
+FROM pengajuan_dokumentasi
+WHERE status = 'pending' OR status = 'approved'
+ORDER BY created_at DESC;
+
+SELECT: Login verification
+─────────────────────────
+
+SELECT id, username, role, unit
+FROM users
+WHERE username = ? AND password = ?;
+-- Parameters: (username_input, sha256_hash_password)
+
+SELECT: Kalender events untuk bulan tertentu
+──────────────────────────────────────────────
+
+SELECT id, pengajuan_id, tanggal, nama_kegiatan, unit, status
+FROM dokumentasi_calendar
+WHERE SUBSTR(tanggal, 7, 4) = '2026' 
+  AND SUBSTR(tanggal, 4, 2) = '01'
+ORDER BY tanggal ASC;
+
+
+C. UPDATE (MODIFY) OPERATIONS
+═════════════════════════════════════════════════════════════════
+
+UPDATE: Admin approve pengajuan
+───────────────────────────────
+
+UPDATE pengajuan_dokumentasi
+SET status = 'approved'
+WHERE id = ?;
+
+UPDATE dokumentasi_calendar
+SET status = 'approved'
+WHERE pengajuan_id = ?;
+
+UPDATE: Admin reject pengajuan dengan alasan
+──────────────────────────────────────────────
+
+UPDATE pengajuan_dokumentasi
+SET status = 'rejected', 
+    rejection_reason = 'Data tidak lengkap, silahkan revisi...'
+WHERE id = ?;
+
+UPDATE: Admin input hasil dokumentasi
+──────────────────────────────────────
+
+UPDATE pengajuan_dokumentasi
+SET hasil_link_drive = 'https://drive.google.com/...',
+    hasil_video = 'https://youtube.com/...',
+    hasil_flyer = 'https://drive.google.com/...',
+    updated_at = '2026-02-01 15:30:00'
+WHERE id = ?;
+
+UPDATE: Mark dokumentasi selesai
+─────────────────────────────────
+
+UPDATE pengajuan_dokumentasi
+SET status = 'done'
+WHERE id = ?;
+
+UPDATE dokumentasi_calendar
+SET status = 'done'
+WHERE pengajuan_id = ?;
+
+UPDATE: Update engagement metrics (dari scraping)
+──────────────────────────────────────────────────
+
+UPDATE monitoring_pln
+SET likes = ?, comments = ?, views = ?, last_updated = ?
+WHERE link_pemberitaan = ?;
+
+UPDATE: Change user password (admin action)
+──────────────────────────────────────────────
+
+UPDATE users
+SET password = ? -- SHA256 hash
+WHERE username = ? OR id = ?;
+
+UPDATE: Edit monitoring data (via Data Editor)
+───────────────────────────────────────────────
+
+UPDATE monitoring_pln
+SET tanggal = ?, bulan = ?, tahun = ?,
+    judul_pemberitaan = ?, kategori = ?,
+    likes = ?, comments = ?, views = ?,
+    last_updated = ?
+WHERE link_pemberitaan = ?
+  AND (id = ? OR link_pemberitaan = ?);
+
+
+D. DELETE (REMOVE) OPERATIONS
+═════════════════════════════════════════════════════════════════
+
+DELETE: Hapus monitoring record (admin action)
+───────────────────────────────────────────────
+
+DELETE FROM monitoring_pln
+WHERE id = ? OR link_pemberitaan = ?;
+
+DELETE: Hapus pengajuan dokumentasi (cascade)
+──────────────────────────────────────────────
+
+DELETE FROM pengajuan_dokumentasi WHERE id = ?;
+DELETE FROM dokumentasi_calendar WHERE pengajuan_id = ?;
+
+DELETE: Bulk delete monitoring data (masa tertentu)
+─────────────────────────────────────────────────────
+
+DELETE FROM monitoring_pln
+WHERE tahun = '2025'
+  OR (tahun = '2026' AND bulan IN ('Januari', 'Februari'));
+
+
+E. DATABASE BACKUP & RESTORE
+═════════════════════════════════════════════════════════════════
+
+BACKUP: Manual file copy (simplest method)
+──────────────────────────────────────────
+
+# Windows PowerShell
+Copy-Item "PLN_Ultimate_Monitoring_V7.db" -Destination "backup/PLN_Ultimate_Monitoring_V7_$(Get-Date -Format yyyyMMdd_HHmmss).db"
+
+# Linux/Mac
+cp PLN_Ultimate_Monitoring_V7.db backup/PLN_Ultimate_Monitoring_V7_$(date +%Y%m%d_%H%M%S).db
+
+BACKUP: SQL dump
+────────────────
+
+# SQLite3 command line
+sqlite3 PLN_Ultimate_Monitoring_V7.db ".dump" > backup_dump.sql
+
+# Python dengan sqlite3
+import sqlite3
+conn = sqlite3.connect('PLN_Ultimate_Monitoring_V7.db')
+with open('backup.sql', 'w') as f:
+    for line in conn.iterdump():
+        f.write(f'{line}\n')
+conn.close()
+
+RESTORE: From SQL dump
+──────────────────────
+
+# Command line
+sqlite3 PLN_Ultimate_Monitoring_V7_new.db < backup_dump.sql
+
+# Python
+import sqlite3
+conn = sqlite3.connect('PLN_Ultimate_Monitoring_V7_restore.db')
+with open('backup.sql', 'r') as f:
+    conn.executescript(f.read())
+conn.commit()
+conn.close()
+
+
+F. DATABASE RESET & CLEANUP
+═════════════════════════════════════════════════════════════════
+
+RESET: Clear all monitoring data (keep tables)
+──────────────────────────────────────────────
+
+DELETE FROM monitoring_pln;
+DELETE FROM sqlite_sequence WHERE name='monitoring_pln';
+
+RESET: Clear all dokumentasi requests
+──────────────────────────────────────
+
+DELETE FROM dokumentasi_calendar;
+DELETE FROM pengajuan_dokumentasi;
+DELETE FROM sqlite_sequence WHERE name='dokumentasi_calendar';
+DELETE FROM sqlite_sequence WHERE name='pengajuan_dokumentasi';
+
+RESET: Clear all users (except default admin)
+───────────────────────────────────────────────
+
+DELETE FROM users WHERE username != 'admin';
+DELETE FROM sqlite_sequence WHERE name='users';
+
+RESET: Complete database reset (fresh start)
+──────────────────────────────────────────────
+
+DELETE FROM monitoring_pln;
+DELETE FROM pengajuan_dokumentasi;
+DELETE FROM dokumentasi_calendar;
+DELETE FROM daftar_akun_unit;
+DELETE FROM users WHERE username != 'admin';
+
+-- Reset auto-increment counters
+DELETE FROM sqlite_sequence;
+INSERT INTO sqlite_sequence VALUES ('users', 1);
+INSERT INTO sqlite_sequence VALUES ('monitoring_pln', 0);
+INSERT INTO sqlite_sequence VALUES ('pengajuan_dokumentasi', 0);
+INSERT INTO sqlite_sequence VALUES ('dokumentasi_calendar', 0);
+
+
+G. VACUUM & OPTIMIZE
+═════════════════════════════════════════════════════════════════
+
+VACUUM (Reclaim space after delete)
+────────────────────────────────────
+
+PRAGMA journal_mode=DELETE;  -- Switch to standard journaling
+VACUUM;                       -- Compact database file
+PRAGMA journal_mode=WAL;      -- Switch back to WAL for better concurrency
+
+ANALYZE (Update statistics)
+────────────────────────────
+
+ANALYZE;  -- Gather statistics for query optimization
+
+
+H. MIGRATION & SCHEMA UPDATE
+═════════════════════════════════════════════════════════════════
+
+ADD COLUMN: Add new field ke table existing
+───────────────────────────────────────────
+
+ALTER TABLE monitoring_pln ADD COLUMN tipe_konten TEXT DEFAULT 'Feeds';
+ALTER TABLE pengajuan_dokumentasi ADD COLUMN hasil_flyer TEXT;
+
+RENAME COLUMN: Change column name
+──────────────────────────────────
+
+-- SQLite3 doesn't support direct RENAME COLUMN before v3.25
+-- Workaround: Create new table, copy data, drop old, rename
+
+CREATE TABLE monitoring_pln_new (
+    id INTEGER PRIMARY KEY,
+    tanggal TEXT,
+    bulan_baru TEXT,  -- renamed from 'bulan'
+    ... other columns ...
+);
+
+INSERT INTO monitoring_pln_new 
+SELECT id, tanggal, bulan, ... FROM monitoring_pln;
+
+DROP TABLE monitoring_pln;
+ALTER TABLE monitoring_pln_new RENAME TO monitoring_pln;
+
+CREATE INDEX: Speed up queries
+────────────────────────────────
+
+CREATE UNIQUE INDEX idx_monitoring_link 
+ON monitoring_pln(link_pemberitaan);
+
+CREATE INDEX idx_pengajuan_user 
+ON pengajuan_dokumentasi(user_id);
+
+CREATE INDEX idx_pengajuan_status 
+ON pengajuan_dokumentasi(status);
+
+CREATE INDEX idx_calendar_tanggal 
+ON dokumentasi_calendar(tanggal);
+
+
+================================================================================
+7. GUIDE PENGGUNAAN SISTEM
+================================================================================
+
+A. MEMULAI APLIKASI
+═════════════════════════════════════════════════════════════════
+
+Requirement:
+├─ Python 3.8+
+├─ pip (package manager)
+└─ SQLite3 (built-in dengan Python)
+
+Installation:
+─────────────
+
+1. Clone/Download project:
+   git clone <repo_url>
+   cd humasplnuidlampung
+
+2. Install dependencies:
+   pip install -r requirements.txt
+
+3. Run aplikasi:
+   python -m streamlit run main.py
+
+4. Browser otomatis buka: http://localhost:8501
+
+Troubleshooting:
+────────────────
+
+• "ModuleNotFoundError: No module named 'streamlit'":
+  → pip install streamlit
+  → pip install -r requirements.txt
+
+• Database file tidak ditemukan:
+  → Aplikasi otomatis create di folder root
+  → Pastikan folder punya write permission
+
+• Port 8501 sudah digunakan:
+  → streamlit run main.py --server.port 8502
+
+
+B. LOGIN & ROLE MANAGEMENT
+═════════════════════════════════════════════════════════════════
+
+DEFAULT CREDENTIALS:
+────────────────────
+Username: admin
+Password: admin123
+
+First Login Steps:
+──────────────────
+
+1. Buka http://localhost:8501
+2. Masukkan username & password
+3. System otomatis detect role (admin/user)
+4. Redirect ke Dashboard sesuai role
+
+Create New User (Admin Only):
+──────────────────────────────
+
+1. Belum tersedia di UI → Manual INSERT atau User self-register
+2. Self-registration (via Login Page):
+   ├─ Click "📝 DAFTAR" tab
+   ├─ Isi: Username, Password (min 6 char), Konfirmasi, Unit
+   ├─ Click "DAFTAR SEKARANG"
+   └─ Automatis dibuat dengan role='user'
+
+Manual Create User (via DB):
+──────────────────────────────
+
+import hashlib
+username = "user_baru"
+password = "pass123"
+hashed = hashlib.sha256(password.encode()).hexdigest()
+
+# SQL:
+INSERT INTO users (username, password, role, unit, created_at)
+VALUES ('user_baru', '{hashed}', 'user', 'Humas', datetime('now'));
+
+Change Password (Admin Script):
+─────────────────────────────────
+
+Gunakan: scripts/set_admin_pass.py
+─ Edit script: new_password = 'new_pass_here'
+─ Run: python scripts/set_admin_pass.py
+
+
+C. FEATURE WALKTHROUGH
+═════════════════════════════════════════════════════════════════
+
+1. DASHBOARD (Admin)
+────────────────────
+
+Menampilkan:
+├─ Metrics: Total Posts, Likes, Views, Pengajuan, Unit Aktif
+├─ Charts:
+│  ├─ Area Chart: Tren publikasi bulanan
+│  ├─ Bar Chart: Top 5 unit kerja
+│  └─ Progress: Status dokumentasi (done/approved/pending)
+├─ Tabs:
+│  ├─ Top Akun Sosmed (rank by post count)
+│  ├─ Pengajuan Terbaru (10 terbaru)
+│  └─ Rekap Biaya Unit (total biaya per unit)
+
+Action:
+└─ Data read-only, navigate ke menu lain untuk edit
+
+
+2. REKAPITULASI MONITORING
+───────────────────────────
+
+Features:
+├─ Smart Filtering:
+│  ├─ Kata kunci (search caption)
+│  ├─ Unit kerja dropdown
+│  ├─ Akun dropdown
+│  ├─ Kategori (Semua/Korporat/Influencer)
+│  └─ Sumber data (Scraping/Input Manual)
+├─ Heatmap Visualization:
+│  ├─ Pivot table: Unit × Bulan
+│  ├─ Gradient coloring (light to dark = low to high)
+│  └─ Per-tahun tabs
+├─ Database Editor:
+│  ├─ Double-click cell untuk edit
+│  ├─ Dropdown untuk field tertentu (bulan, kategori, platform)
+│  ├─ Edit link-pemberitaan, likes, comments, views
+│  └─ Delete row dengan keyboard
+├─ Actions:
+│  ├─ Download Excel (formatted report)
+│  └─ Simpan ke database (upsert logic)
+
+Example Workflow:
+─────────────────
+1. Filter: Unit = Humas, Kategori = Korporat
+2. Lihat heatmap
+3. Double-click like count di table
+4. Edit value (e.g., 150 → 180)
+5. Click "💾 SIMPAN KE DATABASE"
+6. Refresh & verify perubahan
+
+
+3. SINKRONISASI DATA
+────────────────────
+
+Purpose: Automasi scraping dari Instagram
+
+Mode:
+├─ Semua Akun Terdaftar: Scrape semua akun di daftar_akun_unit
+├─ Pilih Akun Unit Spesifik: Checkbox select multiple
+└─ Input Manual Username Influencer: Type username + select unit
+
+Configuration:
+├─ Filter Bulan (default "Semua")
+├─ Limit Post (default 10, max 100)
+├─ Mode Periode:
+│  ├─ Semua Waktu: Scrape all posts
+│  └─ Custom Range: Set from-to date
+
+Process:
+├─ Check cache → return jika ada (TTL 1 jam)
+├─ Check rate limit → wait jika needed
+├─ Scrape dengan retry logic & exponential backoff
+├─ Insert/update ke database dengan ON CONFLICT
+├─ Progress bar real-time
+└─ Summary: "Inserted=X, Updated=Y"
+
+Rate Limit Handling:
+────────────────────
+• Automatic detection dari Instagram (401, 429, "Please wait")
+• Exponential backoff: 10s, 20s, 40s, ...
+• Max retry: 2 attempts (sesuaikan di parameter)
+• Mark account sebagai rate-limited (15 min timeout)
+• Resume scraping jika ada attempt lain
+
+
+4. INPUT MANUAL
+────────────────
+
+Purpose: Entry data monitoring tanpa scraping
+
+Form Fields:
+├─ Jenis Konten radio: Korporat / Influencer
+├─ Tanggal Konten (date picker)
+├─ Platform dropdown: Instagram, YouTube, Facebook, TikTok, Twitter, Media Cetak, Berita
+├─ Caption / Judul Konten (text area)
+├─ Link URL (optional, auto-generated jika kosong)
+├─ Unit Kerja dropdown
+├─ Nama Akun (e.g., @pln_uid_humas)
+├─ Tipe Konten dropdown: Feeds, Reels, Postingan
+├─ Statistik: Likes, Comments, Views (number input)
+└─ Button: "💾 SIMPAN KE DATABASE"
+
+Validasi:
+├─ Unit & Akun required
+├─ Link optional (auto-generated dengan timestamp jika kosong)
+└─ Handle duplicate link: append suffix untuk prevent conflict
+
+Example Entry:
+───────────────
+• Tipe: Korporat
+• Tanggal: 31 Januari 2026
+• Platform: Instagram
+• Caption: "Sosialisasi PLTS di Kabupaten Lampung"
+• Link: (kosong, auto-generate)
+• Unit: Humas
+• Akun: @pln_uid_humas
+• Tipe Konten: Feeds
+• Likes: 250, Comments: 45, Views: 3500
+→ Simpan → ✅ Success
+
+DB ACTION (behaviour):
+├─ System validates link uniqueness (if link present) → if conflict, append suffix or return error based on setting
+├─ INSERT INTO monitoring_pln with source='Input Manual', source_details='Input Manual Form', created_by=current_user, last_updated=NOW()
+├─ After insert, CREATE input_manual_log (user_id=current_user, monitoring_id=inserted_id, tanggal_input=NOW(), sumber_detail='manual form')
+└─ Optional: Prompt to add event to calendar (Insert into dokumentasi_calendar with created_by=current_user)
+
+Note: Input Manual entries are counted in Rekapitulasi & Dashboard metrics the same as scraped data (source marked as 'Input Manual').
+
+
+5. PUSAT KENDALI DOKUMENTASI (Admin)
+──────────────────────────────────────
+
+Purpose: Review & approve dokumentasi requests
+
+Filter Panel:
+├─ Status dropdown: Semua / pending / approved / done / rejected
+├─ Unit dropdown filter
+├─ Keyword search (cari nama kegiatan / pengaju)
+
+Pengajuan Card untuk setiap request:
+├─ Header: ID, Nama Pengaju, Status Badge
+├─ Info Dasar: Unit, Nama, WhatsApp, Biaya
+├─ Jadwal: Tanggal Acara, Waktu, Deadline
+├─ Form Input Hasil (jika approved/done):
+│  ├─ Link Drive (📁)
+│  ├─ Link Video (🎬)
+│  ├─ Link Flyer (📸)
+│  └─ Button: "💾 SIMPAN"
+└─ Action Buttons:
+   ├─ IF pending: "✅ SETUJUI", "❌ TOLAK"
+   ├─ IF approved: "🏁 SELESAIKAN"
+   └─ Always: "🗑️ HAPUS"
+
+Workflow:
+─────────
+
+Status: PENDING
+├─ Admin review request
+├─ Click "✅ SETUJUI" → status = approved
+│  └─ Dokumentasi bisa dimulai
+└─ OR Click "❌ TOLAK" → show modal "Alasan Penolakan?"
+   └─ Input reason → status = rejected (data dikunci)
+
+Status: APPROVED
+├─ Dokumentasi in-progress
+├─ Admin input hasil links (Drive, Video, Flyer)
+├─ Click "💾 SIMPAN"
+└─ Click "🏁 SELESAIKAN" → status = done (final)
+
+Status: DONE
+├─ Links tersedia untuk user
+└─ Final state
+
+Status: REJECTED
+├─ Card tampil dengan warning badge
+├─ Rejection reason ditampilkan
+└─ Data read-only (tidak bisa edit)
+
+
+6. KALENDER DOKUMENTASI
+─────────────────────────
+
+Purpose: Visualisasi jadwal kegiatan dalam calendar grid
+
+Controls:
+├─ Tahun dropdown (default current year)
+├─ Bulan dropdown (default current month)
+└─ Auto-query dokumentasi_calendar untuk periode
+
+Display:
+├─ HTML table calendar (7 kolom = hari)
+├─ Header: Sun-Sat (Indonesian: Ming-Sab)
+├─ Day cell:
+│  ├─ Day number (bold)
+│  ├─ Event badges (max 2 shown)
+│  ├─ Color by status:
+│  │  ├─ pending: 🟠 orange
+│  │  ├─ approved: 🟢 green
+│  │  └─ done: 🔵 blue
+│  ├─ "+X lainnya" jika > 2 events
+│  └─ Hover: Show full event name
+└─ Empty cells untuk hari lain
+
+Interactivity:
+├─ Click event badge → show full details (optional popup)
+├─ Hover cell → highlight row/column
+└─ Change tahun/bulan → auto-reload
+
+
+7. MANAJEMEN USER (Admin Only)
+────────────────────────────────
+
+Features (TBD):
+├─ User list dengan role & unit
+├─ Create new user (form)
+├─ Edit user (change role, unit, status)
+├─ Reset password (send link atau direct)
+├─ Delete user (with confirmation)
+└─ Activity log (siapa login kapan)
+
+
+D. DATA EXPORT & REPORTING
+═════════════════════════════════════════════════════════════════
+
+EXPORT: Download Excel Report
+──────────────────────────────
+
+Location: Rekapitulasi Monitoring page
+Action: Click "📥 DOWNLOAD EXCEL" button
+
+Output File Structure:
+├─ Sheet 1: "Data_Detail"
+│  ├─ All columns dari filtered monitoring_pln
+│  ├─ Header: Blue background, white text, bold
+│  ├─ Row count: sesuai filter
+│  └─ Column width: Auto (18 char)
+│
+└─ Sheet 2: "Rekapan Tahunan"
+   ├─ For each year (descending):
+   │  ├─ Year title (14pt, blue, underlined)
+   │  ├─ Pivot table: Unit × Bulan
+   │  ├─ Values: Count of posts
+   │  ├─ Gradient: Light-Blue (0) → Dark-Blue (high)
+   │  ├─ Column widths: Unit=30ch, Months=12ch
+   │  └─ Spacing: 3 rows between years
+   └─ Filename: Rekap_PLN_DDMMYY.xlsx
+
+Format:
+├─ Bold header row
+├─ Numbered rows (index column hidden)
+├─ Number formatting: 1000 separator
+└─ Freeze header row (optional)
+
+
+================================================================================
+8. TROUBLESHOOTING & FAQ
+================================================================================
+
+Q1: "ModuleNotFoundError: No module named 'streamlit'"
+─────────────────────────────────────────────────────
+
+A: Install missing dependencies:
+   pip install -r requirements.txt
+   
+   Jika masih error:
+   pip install streamlit pandas sqlalchemy instaloader xlsxwriter numpy
+
+Q2: "Database file not found" / Database error
+───────────────────────────────────────────────
+
+A: Aplikasi otomatis create DB file di root folder.
+   
+   Checklist:
+   ✓ Folder punya write permission
+   ✓ Delete *.db-shm & *.db-wal (WAL temporary files)
+   ✓ Restart aplikasi: Ctrl+C → python -m streamlit run main.py
+
+Q3: "Rate limited" / Instagram scraping tidak bekerja
+──────────────────────────────────────────────────────
+
+A: Kamu di-rate limit oleh Instagram.
+   
+   Solutions:
+   ✓ Tunggu 15-30 menit (check limit status di sistem)
+   ✓ Gunakan akun Instagram berbeda (rotate akun)
+   ✓ Kurangi limit post (dari 20 → 10)
+   ✓ Scrape bulan spesifik (tidak semua bulan sekaligus)
+   ✓ Check: Apakah IP/device sudah suspicious? (Instagram policy)
+
+Q4: "Username not found" during login
+──────────────────────────────────────
+
+A: Username tidak ada atau password salah.
+   
+   Solutions:
+   ✓ Check capitalization (case-sensitive)
+   ✓ Self-register user (📝 DAFTAR tab)
+   ✓ Admin create user (manual SQL atau admin panel)
+   ✓ Default: admin / admin123
+
+Q5: Excel download tidak berfungsi
+──────────────────────────────────
+
+A: Masalah pandas atau xlsxwriter.
+   
+   Solutions:
+   ✓ pip install xlsxwriter --upgrade
+   ✓ pip install pandas --upgrade
+   ✓ Try different filter (maybe data is empty?)
+   ✓ Check browser download folder permissions
+
+Q6: Calendar tidak menampilkan events
+────────────────────────────────────
+
+A: Kemungkinan: filter tahun/bulan tidak sesuai, atau data kosong.
+   
+   Debug:
+   ✓ Lihat pengajuan sudah ada? (Pusat Kendali Dokumentasi)
+   ✓ Check tanggal format DD/MM/YYYY
+   ✓ Tahun & bulan picker sesuai pengajuan?
+   ✓ Manual query: SELECT * FROM dokumentasi_calendar
+
+Q7: Pengguna tidak bisa lihat hasil dokumentasi
+──────────────────────────────────────────────────
+
+A: Admin belum input link hasil atau status belum 'done'.
+   
+   Checklist:
+   ✓ Admin set status = 'approved'
+   ✓ Admin input hasil_link_drive, hasil_video, hasil_flyer
+   ✓ Admin click "💾 SIMPAN"
+   ✓ Status berubah ke 'done' (jika selesai)
+   ✓ User login ulang untuk refresh
+
+Q8: Scraping super lambat / banyak timeout
+────────────────────────────────────────────
+
+A: Instagram lagi strict atau koneksi lambat.
+   
+   Solutions:
+   ✓ Check internet speed (ping, tracert)
+   ✓ Use VPN (jika IP di-block Instagram)
+   ✓ Reduce limit: 20 → 5 posts
+   ✓ Scrape 1 akun only (test)
+   ✓ Time-of-day: Scrape pada jam low-traffic (e.g., middle night)
+
+Q9: "UNIQUE constraint failed: link_pemberitaan"
+──────────────────────────────────────────────────
+
+A: Post link sudah ada di database.
+   
+   Solutions:
+   ✓ Sudah di-scrape sebelumnya
+   ✓ ON CONFLICT logic akan update (bukan insert)
+   ✓ Jika manual input: link auto-generated dengan unique suffix
+   ✓ Clear cache jika perlu (session_state clear)
+
+Q10: Data tidak muncul di Dashboard setelah insert
+────────────────────────────────────────────────────
+
+A: Need refresh/rerun untuk update.
+   
+   Solutions:
+   ✓ Manual click button refresh (st.button('🔄 Refresh'))
+   ✓ Auto: Streamlit re-run setelah form submit
+   ✓ Check DB punya data: Query manual SELECT COUNT(*)
+   ✓ WAL checkpoint: db-shm, db-wal file issues → delete & restart
+
+
+PERFORMANCE OPTIMIZATION TIPS
+═════════════════════════════════════════════════════════════════
+
+1. Cache Data:
+   ├─ Scraping results cached 1 hour (TTL)
+   ├─ Use st.cache_data untuk expensive queries
+   └─ Clear cache jika perlu: st.cache_data.clear()
+
+2. Database Indices:
+   ├─ UNIQUE INDEX pada link_pemberitaan (prevent duplicates)
+   ├─ Create index pada frequently-queried columns:
+   │  ├─ monitoring_pln(pic_unit)
+   │  ├─ monitoring_pln(bulan, tahun)
+   │  ├─ pengajuan_dokumentasi(user_id)
+   │  └─ pengajuan_dokumentasi(status)
+   └─ Run: CREATE INDEX idx_name ON table(column)
+
+3. WAL Mode:
+   ├─ Better concurrency (multiple readers)
+   ├─ Set di: get_db_connection() atau init_db()
+   ├─ PRAGMA journal_mode=WAL
+   └─ Keep checkpoint healthy
+
+4. Limit Query Results:
+   ├─ Use LIMIT clause untuk large tables
+   ├─ Pagination untuk 1000+ rows
+   └─ Filter sebelum SELECT *
+
+5. Monitor Database Size:
+   ├─ Check file size: ls -lh *.db
+   ├─ Run VACUUM untuk reclaim space
+   └─ Delete old data (1 tahun lalu)
+
+6. Async Scraping (Future):
+   ├─ Use concurrent.futures atau asyncio
+   ├─ Scrape multiple accounts parallel
+   └─ Better resource utilization
+
+
+SECURITY CONSIDERATIONS
+═════════════════════════════════════════════════════════════════
+
+1. Password Hashing:
+   ✓ SHA256 (current) → secure untuk basic use
+   ⚠ Consider bcrypt/scrypt untuk better security
+   ⚠ Add salt untuk resist rainbow table attacks
+
+2. SQL Injection Prevention:
+   ✓ Use parameterized queries (text() dengan :param)
+   ✓ Never concatenate user input ke SQL string
+   ✓ SQLAlchemy & sqlite3 parameter binding safe
+
+3. Session Management:
+   ✓ st.session_state stored client-side (encrypted by default)
+   ⚠ Logout clear session_state completely
+   ✓ No sensitive data in session state
+
+4. Access Control:
+   ✓ Role-based (admin vs user)
+   ✓ Check user role sebelum grant access
+   ⚠ Expand: implement permission matrix
+
+5. API/Scraping:
+   ✓ Rotate user agents
+   ✓ Respect rate limits (Instagram, dll)
+   ✓ Use VPN jika terkena IP block
+
+6. Database Backup:
+   ✓ Regular backup (daily recommended)
+   ✓ Store di multiple location (local + cloud)
+   ✓ Test restore procedure
+
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+
+Version: 1.0
+Last Update: 31 Januari 2026
+Author: PLN UID Lampung Humas Division
+Document Status: Complete & Production-Ready
+
+For questions or updates: contact@pln-uid-lampung.local
